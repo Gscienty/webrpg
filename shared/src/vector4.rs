@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Neg, Sub};
+use std::ops::{Add, Index, IndexMut, Mul, MulAssign, Neg, Sub};
 
 #[derive(PartialEq, Clone, Copy, Default, Debug)]
 pub struct Vector4 {
@@ -14,6 +14,32 @@ impl From<(f32, f32, f32, f32)> for Vector4 {
     }
 }
 
+impl Index<usize> for Vector4 {
+    type Output = f32;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        match index {
+            0 => &self.x,
+            1 => &self.y,
+            2 => &self.z,
+            3 => &self.w,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl IndexMut<usize> for Vector4 {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        match index {
+            0 => &mut self.x,
+            1 => &mut self.y,
+            2 => &mut self.z,
+            3 => &mut self.w,
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl Mul<f32> for Vector4 {
     type Output = Self;
 
@@ -24,6 +50,12 @@ impl Mul<f32> for Vector4 {
             z: self.z * rhs,
             w: self.w * rhs,
         }
+    }
+}
+
+impl MulAssign<f32> for Vector4 {
+    fn mul_assign(&mut self, rhs: f32) {
+        *self = *self * rhs;
     }
 }
 

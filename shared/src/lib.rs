@@ -10,3 +10,7 @@ mod vector4;
 pub use vector4::Vector4;
 mod quaternion;
 pub use quaternion::{Quaternion, RotationOrder};
+mod rect;
+pub use rect::Rect;
+mod triangle3;
+pub use triangle3::Triangle3;
