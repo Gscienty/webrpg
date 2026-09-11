@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut, Mul};
 
-use crate::{Quaternion, RotationOrder, Vector3, Vector4};
+use super::{Quaternion, RotationOrder, Vector3, Vector4};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub struct Matrix4 {
@@ -118,7 +118,7 @@ impl Matrix4 {
         self
     }
 
-    pub fn inverse(self) -> Self {
+    pub fn inverse(&self) -> Self {
         let mut rows = [[0.; 8]; 4];
         for row in 0..4 {
             for column in 0..4 {
@@ -183,7 +183,7 @@ impl Matrix4 {
         }
     }
 
-    pub fn rotate(self, euler: Vector3, order: RotationOrder) -> Self {
+    pub fn rotate(&self, euler: Vector3, order: RotationOrder) -> Self {
         let (sx, cx) = (euler.x * 0.5).sin_cos();
         let (sy, cy) = (euler.y * 0.5).sin_cos();
         let (sz, cz) = (euler.z * 0.5).sin_cos();
@@ -201,7 +201,7 @@ impl Matrix4 {
         }
     }
 
-    pub fn rotate_quat(self, quat: Quaternion) -> Self {
+    pub fn rotate_quat(&self, quat: Quaternion) -> Self {
         self.rotate4(Vector4::from((quat.x, quat.y, quat.z, quat.w)))
     }
 

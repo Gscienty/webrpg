@@ -115,7 +115,7 @@ impl Vector4 {
         self * (1. / self.length())
     }
 
-    pub fn dot(self, rhs: Self) -> f32 {
+    pub fn dot(&self, rhs: Self) -> f32 {
         self.x * rhs.x + self.y * rhs.y + self.z * rhs.z + self.w * rhs.w
     }
 

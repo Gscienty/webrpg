@@ -1,6 +1,6 @@
 use std::ops::{Add, Mul, Neg};
 
-use crate::{Matrix4, Vector3};
+use super::{Matrix4, Vector3};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub struct Quaternion {
@@ -106,7 +106,7 @@ impl Quaternion {
         Self::from(Matrix4::identity().rotate(euler, order))
     }
 
-    pub fn dot(self, right: Self) -> f32 {
+    pub fn dot(&self, right: Self) -> f32 {
         self.x * right.x + self.y * right.y + self.z * right.z + self.w * right.w
     }
 
@@ -121,7 +121,7 @@ impl Quaternion {
             cosine = -cosine;
         }
 
-        let (scale_p, scale_q) = if cosine < 1. - 1e-6 {
+        let (scale_p, scale_q) = if cosine < 1. - f32::EPSILON {
             let omega = cosine.acos();
             let sine = omega.sin();
 
@@ -141,7 +141,7 @@ impl Quaternion {
 
     pub fn normalized(self) -> Self {
         let length = self.length();
-        if length < 1e-6 {
+        if length < f32::EPSILON {
             return self;
         }
         self * (1. / length)

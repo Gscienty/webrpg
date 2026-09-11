@@ -1,6 +1,6 @@
 use std::ops::{Div, Mul};
 
-use crate::Vector2;
+use super::Vector2;
 
 #[derive(PartialEq, Clone, Copy, Default, Debug)]
 pub struct Rect {
@@ -32,14 +32,14 @@ impl Div<f32> for Rect {
 }
 
 impl Rect {
-    pub fn contains(self, point: Vector2) -> bool {
+    pub fn contains(&self, point: Vector2) -> bool {
         point.x >= self.x
             && point.x <= self.x + self.w
             && point.y >= self.y
             && point.y <= self.y + self.h
     }
 
-    pub fn inset(self, inset: f32) -> Self {
+    pub fn inset(&self, inset: f32) -> Self {
         Self {
             x: self.x + inset,
             y: self.y + inset,
@@ -48,7 +48,7 @@ impl Rect {
         }
     }
 
-    pub fn center(self) -> Vector2 {
+    pub fn center(&self) -> Vector2 {
         Vector2::from((self.x + self.w * 0.5, self.y + self.h * 0.5))
     }
 }

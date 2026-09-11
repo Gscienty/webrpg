@@ -1,10 +1,10 @@
-use crate::Vector3;
+use super::Vector3;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub struct Triangle3 {
-    a: Vector3,
-    b: Vector3,
-    c: Vector3,
+    pub(crate) a: Vector3,
+    pub(crate) b: Vector3,
+    pub(crate) c: Vector3,
 }
 
 impl From<(Vector3, Vector3, Vector3)> for Triangle3 {
@@ -14,7 +14,7 @@ impl From<(Vector3, Vector3, Vector3)> for Triangle3 {
 }
 
 impl Triangle3 {
-    pub fn normal(self) -> Vector3 {
+    pub fn normal(&self) -> Vector3 {
         let side_1 = self.b - self.a;
         let side_2 = self.c - self.a;
 
