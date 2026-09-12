@@ -1,4 +1,4 @@
-use jpeg_decoder::{Decoder, PixelFormat};
+use jpeg_decoder::{ColorTransform, Decoder, PixelFormat};
 use shared::color::Color32;
 
 use crate::texture::{
@@ -156,25 +156,51 @@ impl InternalBLPInfos {
         self.infos.mip_levels
     }
 
-    pub fn convert(&self, mip_level: usize, buffer: &[u8]) -> Vec<Color32> {
-        let offset = self.header.offsets[mip_level];
-        let size = self.header.lengths[mip_level];
-        let chunk = &buffer[offset..offset + size];
+    pub fn convert(&self, mip_level: usize, buffer: &[u8]) -> Result<Vec<Color32>, Error> {
+        if mip_level >= self.infos.mip_levels {
+            return Err(Error::MipOutOfBounds);
+        }
+        let offset = *self
+            .header
+            .offsets
+            .get(mip_level)
+            .ok_or(Error::MipOutOfBounds)?;
+        let size = *self
+            .header
+            .lengths
+            .get(mip_level)
+            .ok_or(Error::MipOutOfBounds)?;
+        let end = offset.checked_add(size).ok_or(Error::MipOutOfBounds)?;
+        let chunk = buffer.get(offset..end).ok_or(Error::MipOutOfBounds)?;
 
         let width = self.width(mip_level);
         let height = self.height(mip_level);
+        let pixel_count = (width as usize)
+            .checked_mul(height as usize)
+            .ok_or(Error::InvalidDimensions)?;
+
+        let expected_size = match self.format() {
+            BLPFormat::PalettedNoAlpha => Some(pixel_count),
+            BLPFormat::PalettedAlpha1 => pixel_count.checked_add(pixel_count.div_ceil(8)),
+            BLPFormat::PalettedAlpha4 => pixel_count.checked_add(pixel_count.div_ceil(2)),
+            BLPFormat::PalettedAlpha8 => pixel_count.checked_mul(2),
+            _ => None,
+        };
+        if expected_size.is_some_and(|expected| chunk.len() != expected) {
+            return Err(Error::MipOutOfBounds);
+        }
 
         match self.format() {
-            BLPFormat::Jpeg => self.convert_jpeg(chunk),
-            BLPFormat::PalettedNoAlpha => self.convert_paletted_no_alpha(width, height, chunk),
-            BLPFormat::PalettedAlpha1 => self.convert_paletted_alpha1(width, height, chunk),
-            BLPFormat::PalettedAlpha4 => self.convert_paletted_alpha4(width, height, chunk),
-            BLPFormat::PalettedAlpha8 => self.convert_paletted_alpha8(width, height, chunk),
+            BLPFormat::Jpeg => self.convert_jpeg(width, chunk),
+            BLPFormat::PalettedNoAlpha => Ok(self.convert_paletted_no_alpha(width, height, chunk)),
+            BLPFormat::PalettedAlpha1 => Ok(self.convert_paletted_alpha1(width, height, chunk)),
+            BLPFormat::PalettedAlpha4 => Ok(self.convert_paletted_alpha4(width, height, chunk)),
+            BLPFormat::PalettedAlpha8 => Ok(self.convert_paletted_alpha8(width, height, chunk)),
             _ => unreachable!(),
         }
     }
 
-    fn convert_jpeg(&self, buffer: &[u8]) -> Vec<Color32> {
+    fn convert_jpeg(&self, width: u32, buffer: &[u8]) -> Result<Vec<Color32>, Error> {
         let BLP1InfoExtra::Jpeg(header) = &self.infos.extra else {
             unreachable!()
         };
@@ -185,9 +211,13 @@ impl InternalBLPInfos {
         jpeg.extend_from_slice(buffer);
 
         let mut decoder = Decoder::new(jpeg.as_slice());
-        let pixels = decoder.decode().expect("invalid BLP JPEG data");
-        let format = decoder.info().expect("missing JPEG metadata").pixel_format;
-        pixels_to_colors(&pixels, format)
+        decoder.read_info().map_err(|_| Error::InvalidJpegData)?;
+        let format = decoder.info().ok_or(Error::InvalidJpegData)?.pixel_format;
+        if format == PixelFormat::CMYK32 {
+            decoder.set_color_transform(ColorTransform::None);
+        }
+        let pixels = decoder.decode().map_err(|_| Error::InvalidJpegData)?;
+        Ok(pixels_to_colors(&pixels, format, width as usize))
     }
 
     fn convert_paletted_no_alpha(&self, width: u32, height: u32, buffer: &[u8]) -> Vec<Color32> {
@@ -274,7 +304,7 @@ impl InternalBLPInfos {
     }
 }
 
-fn pixels_to_colors(pixels: &[u8], format: PixelFormat) -> Vec<Color32> {
+fn pixels_to_colors(pixels: &[u8], format: PixelFormat, width: usize) -> Vec<Color32> {
     match format {
         PixelFormat::L8 => pixels
             .iter()
@@ -300,25 +330,23 @@ fn pixels_to_colors(pixels: &[u8], format: PixelFormat) -> Vec<Color32> {
         PixelFormat::RGB24 => pixels
             .chunks_exact(3)
             .map(|pixel| Color32 {
-                red: pixel[2],
+                red: pixel[0],
                 green: pixel[1],
-                blue: pixel[0],
+                blue: pixel[2],
                 alpha: 255,
             })
             .collect(),
+        // With ColorTransform::None jpeg-decoder returns each scanline as
+        // BBB...GGG...RRR...AAA..., while WebGL needs interleaved RGBA pixels.
         PixelFormat::CMYK32 => pixels
-            .chunks_exact(4)
-            .map(|pixel| {
-                let inverted_cyan = pixel[0];
-                let inverted_magenta = pixel[1];
-                let inverted_yellow = pixel[2];
-                let inverted_black = pixel[3];
-                Color32 {
-                    red: (u16::from(inverted_yellow) * u16::from(inverted_black) / 255) as u8,
-                    green: (u16::from(inverted_magenta) * u16::from(inverted_black) / 255) as u8,
-                    blue: (u16::from(inverted_cyan) * u16::from(inverted_black) / 255) as u8,
-                    alpha: 255,
-                }
+            .chunks_exact(width * 4)
+            .flat_map(|row| {
+                (0..width).map(move |x| Color32 {
+                    red: row[width * 2 + x],
+                    green: row[width + x],
+                    blue: row[x],
+                    alpha: row[width * 3 + x],
+                })
             })
             .collect(),
     }
@@ -357,7 +385,12 @@ mod tests {
         assert_eq!((blp.width(0), blp.height(0), blp.mip_level()), (2, 1, 1));
         assert!(matches!(blp.format(), BLPFormat::PalettedAlpha4));
         assert_eq!(
-            blp.convert(0, &buffer),
+            blp.convert(0, &buffer[..mip_offset + 2]),
+            Err(Error::MipOutOfBounds)
+        );
+        assert_eq!(blp.convert(1, &buffer), Err(Error::MipOutOfBounds));
+        assert_eq!(
+            blp.convert(0, &buffer).unwrap(),
             vec![
                 Color32 {
                     red: 30,
@@ -389,7 +422,7 @@ mod tests {
 
     #[test]
     fn converts_decoded_pixels_to_color32() {
-        let rgb = pixels_to_colors(&[10, 20, 30, 40, 50, 60], PixelFormat::RGB24);
+        let rgb = pixels_to_colors(&[10, 20, 30, 40, 50, 60], PixelFormat::RGB24, 2);
         assert_eq!(
             (rgb[0].red, rgb[0].green, rgb[0].blue, rgb[0].alpha),
             (10, 20, 30, 255)
@@ -399,16 +432,30 @@ mod tests {
             (40, 50, 60, 255)
         );
 
-        let gray = pixels_to_colors(&[42], PixelFormat::L8);
+        let gray = pixels_to_colors(&[42], PixelFormat::L8, 1);
         assert_eq!(
             (gray[0].red, gray[0].green, gray[0].blue, gray[0].alpha),
             (42, 42, 42, 255)
         );
 
-        let cmyk = pixels_to_colors(&[255, 128, 0, 255], PixelFormat::CMYK32);
+        let bgra_rows = pixels_to_colors(&[30, 70, 20, 60, 10, 50, 40, 80], PixelFormat::CMYK32, 2);
         assert_eq!(
-            (cmyk[0].red, cmyk[0].green, cmyk[0].blue, cmyk[0].alpha),
-            (255, 128, 0, 255)
+            (
+                bgra_rows[0].red,
+                bgra_rows[0].green,
+                bgra_rows[0].blue,
+                bgra_rows[0].alpha
+            ),
+            (10, 20, 30, 40)
+        );
+        assert_eq!(
+            (
+                bgra_rows[1].red,
+                bgra_rows[1].green,
+                bgra_rows[1].blue,
+                bgra_rows[1].alpha
+            ),
+            (50, 60, 70, 80)
         );
     }
 

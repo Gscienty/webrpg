@@ -47,27 +47,6 @@ impl Texture {
             return Ok(());
         }
 
-        let (min, max) =
-            pixels
-                .iter()
-                .fold(([u8::MAX; 4], [u8::MIN; 4]), |(mut min, mut max), color| {
-                    for (index, value) in [color.red, color.green, color.blue, color.alpha]
-                        .into_iter()
-                        .enumerate()
-                    {
-                        min[index] = min[index].min(value);
-                        max[index] = max[index].max(value);
-                    }
-                    (min, max)
-                });
-        web_sys::console::log_1(
-            &format!(
-                "BLP mip {level}: {width}x{height}, pixels={}, rgba={min:?}..{max:?}",
-                pixels.len()
-            )
-            .into(),
-        );
-
         let bytes = unsafe {
             std::slice::from_raw_parts(pixels.as_ptr().cast::<u8>(), size_of_val(pixels))
         };
@@ -140,7 +119,7 @@ impl Texture {
             let width = info.width(level);
             let height = info.height(level);
 
-            let pixels = info.convert(level, data);
+            let pixels = info.convert(level, data)?;
             if !pixels.is_empty() {
                 texture.load_texture_mip_level(gl, &pixels, width, height, level)?;
             }

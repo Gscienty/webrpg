@@ -77,7 +77,9 @@ pub fn render_blp(canvas: HtmlCanvasElement, data: &[u8]) -> Result<(), JsValue>
         gl.uniform1i(Some(&image), 0);
     }
     gl.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
-    gl.clear_color(0.08, 0.08, 0.1, 1.0);
+    gl.enable(Gl::BLEND);
+    gl.blend_func(Gl::SRC_ALPHA, Gl::ONE_MINUS_SRC_ALPHA);
+    gl.clear_color(0., 0., 0., 1.0);
     gl.clear(Gl::COLOR_BUFFER_BIT);
     gl.draw_arrays(Gl::TRIANGLES, 0, 6);
     check_gl(&gl, "draw")?;
