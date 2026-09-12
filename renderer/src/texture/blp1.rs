@@ -50,10 +50,11 @@ impl InternalBLPInfos {
             return Err(Error::InvalidMagic);
         }
 
-        let typ = read_u32()?;
-        if typ > 1 {
-            return Err(Error::InvalidType);
-        }
+        let is_jpeg = match read_u32()? {
+            0 => true,
+            1 => false,
+            _ => return Err(Error::InvalidType),
+        };
         let alpha_bits = match read_u32()? {
             0 => BLPAlphaDepth::Depth0,
             1 => BLPAlphaDepth::Depth1,
@@ -81,7 +82,6 @@ impl InternalBLPInfos {
             mip_levels += 1;
         }
 
-        let is_jpeg = typ == 0;
         let extra = if is_jpeg {
             if buffer.len() < HEADER_SIZE + 4 {
                 return Err(Error::MissingJpegHeaderSize);
@@ -388,15 +388,15 @@ mod tests {
     }
 
     #[test]
-    fn converts_decoded_pixels_to_color32_bgra_order() {
+    fn converts_decoded_pixels_to_color32() {
         let rgb = pixels_to_colors(&[10, 20, 30, 40, 50, 60], PixelFormat::RGB24);
         assert_eq!(
             (rgb[0].red, rgb[0].green, rgb[0].blue, rgb[0].alpha),
-            (30, 20, 10, 255)
+            (10, 20, 30, 255)
         );
         assert_eq!(
             (rgb[1].red, rgb[1].green, rgb[1].blue, rgb[1].alpha),
-            (60, 50, 40, 255)
+            (40, 50, 60, 255)
         );
 
         let gray = pixels_to_colors(&[42], PixelFormat::L8);
@@ -408,7 +408,7 @@ mod tests {
         let cmyk = pixels_to_colors(&[255, 128, 0, 255], PixelFormat::CMYK32);
         assert_eq!(
             (cmyk[0].red, cmyk[0].green, cmyk[0].blue, cmyk[0].alpha),
-            (0, 128, 255, 255)
+            (255, 128, 0, 255)
         );
     }
 

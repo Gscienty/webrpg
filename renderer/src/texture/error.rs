@@ -3,13 +3,17 @@ pub enum Error {
     TruncatedHeader,
     InvalidMagic,
     InvalidType,
+    InvalidEncoding,
     InvalidAlphaDepth,
+    InvalidAlphaEncoding,
     InvalidDimensions,
     NoImageData,
     MipOutOfBounds,
     MissingJpegHeaderSize,
     TruncatedJpegHeader,
     TruncatedPalette,
+    CreateTextureFailed,
+    UploadTextureFailed,
 }
 
 impl std::fmt::Display for Error {
@@ -18,13 +22,17 @@ impl std::fmt::Display for Error {
             Self::TruncatedHeader => "truncated texture header",
             Self::InvalidMagic => "invalid texture magic",
             Self::InvalidType => "invalid texture type",
+            Self::InvalidEncoding => "invalid texture encoding",
             Self::InvalidAlphaDepth => "invalid texture alpha depth",
+            Self::InvalidAlphaEncoding => "invalid texture alpha encoding",
             Self::InvalidDimensions => "invalid texture dimensions",
             Self::NoImageData => "texture has no image data",
             Self::MipOutOfBounds => "texture mip data is out of bounds",
             Self::MissingJpegHeaderSize => "missing JPEG header size",
             Self::TruncatedJpegHeader => "truncated JPEG header",
             Self::TruncatedPalette => "truncated texture palette",
+            Self::CreateTextureFailed => "failed to create WebGL texture",
+            Self::UploadTextureFailed => "failed to upload WebGL texture",
         };
         formatter.write_str(message)
     }

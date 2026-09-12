@@ -25,6 +25,8 @@ pub enum BLPFormat {
     PalettedAlpha4,
     PalettedAlpha8,
 
+    RawBGRA,
+
     Dxt1NoAlpha,
     Dxt1Alpha1,
     Dxt3NoAlpha,
