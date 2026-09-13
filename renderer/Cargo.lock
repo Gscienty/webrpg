@@ -90,6 +90,7 @@ name = "renderer"
 version = "0.1.0"
 dependencies = [
  "jpeg-decoder",
+ "js-sys",
  "shared",
  "web-sys",
 ]

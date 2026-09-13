@@ -4,9 +4,28 @@ use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlProgram, Web
 
 #[wasm_bindgen]
 pub fn render_blp(canvas: HtmlCanvasElement, data: &[u8]) -> Result<(), JsValue> {
+    render_texture(canvas, "texture.blp", data)
+}
+
+#[wasm_bindgen]
+pub fn render_dds(canvas: HtmlCanvasElement, data: &[u8]) -> Result<(), JsValue> {
+    render_texture(canvas, "texture.dds", data)
+}
+
+#[wasm_bindgen]
+pub fn render_pcx(canvas: HtmlCanvasElement, data: &[u8]) -> Result<(), JsValue> {
+    render_texture(canvas, "texture.pcx", data)
+}
+
+#[wasm_bindgen]
+pub fn render_tga(canvas: HtmlCanvasElement, data: &[u8]) -> Result<(), JsValue> {
+    render_texture(canvas, "texture.tga", data)
+}
+
+fn render_texture(canvas: HtmlCanvasElement, filename: &str, data: &[u8]) -> Result<(), JsValue> {
     web_sys::console::log_1(
         &format!(
-            "BLP: magic={:?}, bytes={}",
+            "Texture: magic={:?}, bytes={}",
             data.get(..4).unwrap_or(data),
             data.len()
         )
@@ -16,8 +35,13 @@ pub fn render_blp(canvas: HtmlCanvasElement, data: &[u8]) -> Result<(), JsValue>
         .get_context("webgl2")?
         .ok_or_else(|| JsValue::from_str("WebGL2 is unavailable"))?
         .dyn_into::<Gl>()?;
-    let texture =
-        Texture::load(&gl, data).map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    if filename.ends_with(".dds") {
+        Texture::init(&gl).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    }
+
+    let texture = Texture::load(&gl, filename, data)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
     check_gl(&gl, "texture upload")?;
 
     let vertex = compile_shader(
@@ -72,7 +96,7 @@ pub fn render_blp(canvas: HtmlCanvasElement, data: &[u8]) -> Result<(), JsValue>
     check_gl(&gl, "vertex setup")?;
 
     gl.active_texture(Gl::TEXTURE0);
-    texture.bind();
+    texture.bind(&gl);
     if let Some(image) = gl.get_uniform_location(&program, "image") {
         gl.uniform1i(Some(&image), 0);
     }

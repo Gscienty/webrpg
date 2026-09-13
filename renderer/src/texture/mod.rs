@@ -3,22 +3,29 @@ mod blp1;
 mod blp2;
 mod dds;
 mod error;
+mod pcx;
+mod stb;
 
 pub use error::Error;
 use shared::color::Color32;
 use web_sys::{WebGl2RenderingContext, WebGlTexture, WebglCompressedTextureS3tc};
 
 pub struct Texture {
-    gl: WebGl2RenderingContext,
     texture: WebGlTexture,
     width: u32,
     height: u32,
 }
 
 impl Texture {
-    pub fn bind(&self) {
-        self.gl
-            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.texture));
+    pub fn init(gl: &WebGl2RenderingContext) -> Result<(), Error> {
+        gl.get_extension("WEBGL_compressed_texture_s3tc")
+            .map_err(|_| Error::UnsupportedTextureFormat)?
+            .ok_or(Error::UnsupportedTextureFormat)?;
+        Ok(())
+    }
+
+    pub fn bind(&self, gl: &WebGl2RenderingContext) {
+        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.texture));
     }
 
     fn allocate(gl: &WebGl2RenderingContext, width: u32, height: u32) -> Result<Self, Error> {
@@ -41,7 +48,6 @@ impl Texture {
         }
 
         Ok(Self {
-            gl: gl.clone(),
             texture,
             width,
             height,
@@ -100,12 +106,16 @@ impl Texture {
         Ok(())
     }
 
-    pub fn load(gl: &WebGl2RenderingContext, data: &[u8]) -> Result<Self, Error> {
+    pub fn load(gl: &WebGl2RenderingContext, filename: &str, data: &[u8]) -> Result<Self, Error> {
         let magic = data.get(..4).ok_or(Error::TruncatedHeader)?;
         match magic {
             b"BLP1" => Self::load_blp1(gl, data),
             b"BLP2" => Self::load_blp2(gl, data),
             b"DDS\x20" => Self::load_dds(gl, data),
+            _ if filename.to_lowercase().ends_with(".pcx") || pcx::PCXInfo::is_pcx(data) => {
+                Self::load_pcx(gl, data)
+            }
+            _ if filename.to_lowercase().ends_with(".tga") => Self::load_stb(gl, data),
             _ => Err(Error::InvalidMagic),
         }
     }
@@ -163,8 +173,6 @@ impl Texture {
         info: &dds::DDSHeader,
         data: &[u8],
     ) -> Result<Self, Error> {
-        let texture = Self::allocate(gl, info.width(), info.height())?;
-
         const FOURCC_DXT1: u32 = u32::from_le_bytes(*b"DXT1");
         const FOURCC_DXT3: u32 = u32::from_le_bytes(*b"DXT3");
         const FOURCC_DXT5: u32 = u32::from_le_bytes(*b"DXT5");
@@ -181,6 +189,8 @@ impl Texture {
             ),
             _ => return Err(Error::UnsupportedTextureFormat),
         };
+
+        let texture = Self::allocate(gl, info.width(), info.height())?;
 
         gl.tex_parameteri(
             WebGl2RenderingContext::TEXTURE_2D,
@@ -205,7 +215,12 @@ impl Texture {
             }
             let blocks_wide = (width as usize).div_ceil(4);
             let blocks_high = (height as usize).div_ceil(4);
-            let size = blocks_wide * blocks_high * block_size;
+            let size = blocks_wide
+                .checked_mul(blocks_high)
+                .and_then(|blocks| blocks.checked_mul(block_size))
+                .ok_or(Error::InvalidDimensions)?;
+            let end = offset.checked_add(size).ok_or(Error::MipOutOfBounds)?;
+            let pixels = data.get(offset..end).ok_or(Error::MipOutOfBounds)?;
 
             gl.compressed_tex_image_2d_with_u8_array(
                 WebGl2RenderingContext::TEXTURE_2D,
@@ -214,10 +229,13 @@ impl Texture {
                 width as i32,
                 height as i32,
                 0,
-                &data[offset..offset + size],
+                pixels,
             );
+            if gl.get_error() != WebGl2RenderingContext::NO_ERROR {
+                return Err(Error::UploadTextureFailed);
+            }
 
-            offset += size;
+            offset = end;
             width /= 2;
             height /= 2;
         }
@@ -308,10 +326,24 @@ impl Texture {
 
         Ok(texture)
     }
-}
 
-impl Drop for Texture {
-    fn drop(&mut self) {
-        self.gl.delete_texture(Some(&self.texture));
+    pub fn load_pcx(gl: &WebGl2RenderingContext, data: &[u8]) -> Result<Self, Error> {
+        let info = pcx::PCXInfo::load(data)?;
+        let pixels = info.convert(data)?;
+        let texture = Self::allocate(gl, info.width(), info.height())?;
+        texture.load_texture_mip_level(gl, &pixels, info.width(), info.height(), 0)?;
+        Ok(texture)
+    }
+
+    pub fn load_stb(gl: &WebGl2RenderingContext, data: &[u8]) -> Result<Self, Error> {
+        let image = stb::load_from_memory(data)?;
+
+        let texture = Self::allocate(gl, image.width, image.height)?;
+        texture.load_texture_mip_level(gl, &image.pixels, image.width, image.height, 0)?;
+        Ok(texture)
+    }
+
+    pub fn drop(&self, gl: &WebGl2RenderingContext) {
+        gl.delete_texture(Some(&self.texture));
     }
 }
