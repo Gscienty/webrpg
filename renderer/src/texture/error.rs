@@ -2,6 +2,9 @@
 pub enum Error {
     TruncatedHeader,
     InvalidMagic,
+    InvalidHeaderSize,
+    InvalidPixelFormatSize,
+    UnsupportedTextureFormat,
     InvalidType,
     InvalidEncoding,
     InvalidAlphaDepth,
@@ -22,6 +25,9 @@ impl std::fmt::Display for Error {
         let message = match self {
             Self::TruncatedHeader => "truncated texture header",
             Self::InvalidMagic => "invalid texture magic",
+            Self::InvalidHeaderSize => "invalid texture header size",
+            Self::InvalidPixelFormatSize => "invalid texture pixel format size",
+            Self::UnsupportedTextureFormat => "unsupported texture format",
             Self::InvalidType => "invalid texture type",
             Self::InvalidEncoding => "invalid texture encoding",
             Self::InvalidAlphaDepth => "invalid texture alpha depth",

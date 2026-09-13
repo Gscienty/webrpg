@@ -1,14 +1,12 @@
-#[allow(dead_code)]
 mod blp;
-#[allow(dead_code)]
 mod blp1;
-#[allow(dead_code)]
 mod blp2;
+mod dds;
 mod error;
 
 pub use error::Error;
 use shared::color::Color32;
-use web_sys::{WebGl2RenderingContext, WebGlTexture};
+use web_sys::{WebGl2RenderingContext, WebGlTexture, WebglCompressedTextureS3tc};
 
 pub struct Texture {
     gl: WebGl2RenderingContext,
@@ -26,6 +24,21 @@ impl Texture {
     fn allocate(gl: &WebGl2RenderingContext, width: u32, height: u32) -> Result<Self, Error> {
         let texture = gl.create_texture().ok_or(Error::CreateTextureFailed)?;
         gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&texture));
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
+            WebGl2RenderingContext::LINEAR as i32,
+        );
+        for parameter in [
+            WebGl2RenderingContext::TEXTURE_WRAP_S,
+            WebGl2RenderingContext::TEXTURE_WRAP_T,
+        ] {
+            gl.tex_parameteri(
+                WebGl2RenderingContext::TEXTURE_2D,
+                parameter,
+                WebGl2RenderingContext::REPEAT as i32,
+            );
+        }
 
         Ok(Self {
             gl: gl.clone(),
@@ -77,36 +90,23 @@ impl Texture {
                 WebGl2RenderingContext::LINEAR_MIPMAP_LINEAR as i32,
             );
         } else {
-            for parameter in [
-                WebGl2RenderingContext::TEXTURE_WRAP_S,
-                WebGl2RenderingContext::TEXTURE_WRAP_T,
-            ] {
-                gl.tex_parameteri(
-                    WebGl2RenderingContext::TEXTURE_2D,
-                    parameter,
-                    WebGl2RenderingContext::REPEAT as i32,
-                );
-            }
-            for parameter in [
+            gl.tex_parameteri(
+                WebGl2RenderingContext::TEXTURE_2D,
                 WebGl2RenderingContext::TEXTURE_MIN_FILTER,
-                WebGl2RenderingContext::TEXTURE_MAG_FILTER,
-            ] {
-                gl.tex_parameteri(
-                    WebGl2RenderingContext::TEXTURE_2D,
-                    parameter,
-                    WebGl2RenderingContext::LINEAR as i32,
-                );
-            }
+                WebGl2RenderingContext::LINEAR as i32,
+            );
         }
 
         Ok(())
     }
 
     pub fn load(gl: &WebGl2RenderingContext, data: &[u8]) -> Result<Self, Error> {
-        match blp_version(data)? {
-            1 => Self::load_blp1(gl, data),
-            2 => Self::load_blp2(gl, data),
-            _ => unreachable!(),
+        let magic = data.get(..4).ok_or(Error::TruncatedHeader)?;
+        match magic {
+            b"BLP1" => Self::load_blp1(gl, data),
+            b"BLP2" => Self::load_blp2(gl, data),
+            b"DDS\x20" => Self::load_dds(gl, data),
+            _ => Err(Error::InvalidMagic),
         }
     }
 
@@ -145,32 +145,173 @@ impl Texture {
 
         Ok(texture)
     }
-}
 
-fn blp_version(data: &[u8]) -> Result<u8, Error> {
-    let magic = data.get(..4).ok_or(Error::TruncatedHeader)?;
-    match magic {
-        b"BLP1" => Ok(1),
-        b"BLP2" => Ok(2),
-        _ => Err(Error::InvalidMagic),
+    fn load_dds(gl: &WebGl2RenderingContext, data: &[u8]) -> Result<Self, Error> {
+        let info = dds::DDSHeader::load(data)?;
+
+        if info.is_four_cc() && info.get_four_cc() != 0 {
+            Self::load_dds_four_cc(gl, &info, data)
+        } else if info.is_rgb() || (info.get_flags() & 0x20000) != 0 {
+            Self::load_dds_rgb(gl, &info, data)
+        } else {
+            Err(Error::UnsupportedTextureFormat)
+        }
+    }
+
+    fn load_dds_four_cc(
+        gl: &WebGl2RenderingContext,
+        info: &dds::DDSHeader,
+        data: &[u8],
+    ) -> Result<Self, Error> {
+        let texture = Self::allocate(gl, info.width(), info.height())?;
+
+        const FOURCC_DXT1: u32 = u32::from_le_bytes(*b"DXT1");
+        const FOURCC_DXT3: u32 = u32::from_le_bytes(*b"DXT3");
+        const FOURCC_DXT5: u32 = u32::from_le_bytes(*b"DXT5");
+
+        let (format, block_size) = match info.get_four_cc() {
+            FOURCC_DXT1 => (WebglCompressedTextureS3tc::COMPRESSED_RGB_S3TC_DXT1_EXT, 8),
+            FOURCC_DXT3 => (
+                WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT3_EXT,
+                16,
+            ),
+            FOURCC_DXT5 => (
+                WebglCompressedTextureS3tc::COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                16,
+            ),
+            _ => return Err(Error::UnsupportedTextureFormat),
+        };
+
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_BASE_LEVEL,
+            0,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
+            WebGl2RenderingContext::LINEAR_MIPMAP_LINEAR as i32,
+        );
+
+        let mut offset = info.pixel_offset();
+        let mut width = info.width();
+        let mut height = info.height();
+
+        let mut levels = info.mipmap_count();
+        for level in 0..levels {
+            if width == 0 || height == 0 {
+                levels -= 1;
+                break;
+            }
+            let blocks_wide = (width as usize).div_ceil(4);
+            let blocks_high = (height as usize).div_ceil(4);
+            let size = blocks_wide * blocks_high * block_size;
+
+            gl.compressed_tex_image_2d_with_u8_array(
+                WebGl2RenderingContext::TEXTURE_2D,
+                level as i32,
+                format,
+                width as i32,
+                height as i32,
+                0,
+                &data[offset..offset + size],
+            );
+
+            offset += size;
+            width /= 2;
+            height /= 2;
+        }
+
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MAX_LEVEL,
+            (levels - 1) as i32,
+        );
+
+        Ok(texture)
+    }
+
+    fn load_dds_rgb(
+        gl: &WebGl2RenderingContext,
+        info: &dds::DDSHeader,
+        data: &[u8],
+    ) -> Result<Self, Error> {
+        let layout = info.rgb_layout()?;
+        let format = if layout.bytes_per_pixel == 4 {
+            WebGl2RenderingContext::RGBA
+        } else {
+            WebGl2RenderingContext::RGB
+        };
+        let texture = Self::allocate(gl, info.width(), info.height())?;
+        let mut levels = info.mipmap_count().max(1);
+        let mut offset = info.pixel_offset();
+        let mut width = info.width();
+        let mut height = info.height();
+
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_BASE_LEVEL,
+            0,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
+            if levels > 1 {
+                WebGl2RenderingContext::LINEAR_MIPMAP_LINEAR as i32
+            } else {
+                WebGl2RenderingContext::LINEAR as i32
+            },
+        );
+
+        for level in 0..levels {
+            if width == 0 || height == 0 {
+                levels -= 1;
+                break;
+            }
+
+            let size = ((width * height) as usize) * layout.bytes_per_pixel;
+
+            let mut swapped = Vec::new();
+            let pixels = if layout.swap_red_blue {
+                swapped.extend_from_slice(&data[offset..offset + size]);
+                for pixel in swapped.chunks_exact_mut(layout.bytes_per_pixel) {
+                    pixel.swap(0, 2);
+                }
+                swapped.as_slice()
+            } else {
+                &data[offset..offset + size]
+            };
+
+            gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+                WebGl2RenderingContext::TEXTURE_2D,
+                level as i32,
+                format as i32,
+                width as i32,
+                height as i32,
+                0,
+                format,
+                WebGl2RenderingContext::UNSIGNED_BYTE,
+                Some(pixels),
+            )
+            .map_err(|_| Error::UploadTextureFailed)?;
+
+            offset += size;
+            width = (width / 2).max(1);
+            height = (height / 2).max(1);
+        }
+
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MAX_LEVEL,
+            (levels - 1) as i32,
+        );
+
+        Ok(texture)
     }
 }
 
 impl Drop for Texture {
     fn drop(&mut self) {
         self.gl.delete_texture(Some(&self.texture));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn detects_blp_version() {
-        assert_eq!(blp_version(b"BLP1"), Ok(1));
-        assert_eq!(blp_version(b"BLP2"), Ok(2));
-        assert_eq!(blp_version(b"BLP"), Err(Error::TruncatedHeader));
-        assert_eq!(blp_version(b"BLP3"), Err(Error::InvalidMagic));
     }
 }
