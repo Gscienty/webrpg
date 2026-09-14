@@ -35,14 +35,8 @@ pub static UNLIT: Descriptor<3, 3, 2> = Descriptor::new(
         varying_declare!(texcoord, UniformType::FloatVec2),
         varying_declare!(color, UniformType::Color),
     ],
-    "vec4 vert() {
-    v_texcoord = a_texcoord;
-    v_color = a_color;
-    return u_view_projection * u_model * vec4(a_position, 1.0);
-}",
-    "vec4 frag() {
-    return texture(u_texture, v_texcoord) * v_color;
-}",
+    include_str!("glsl/unlit.vert.glsl"),
+    include_str!("glsl/unlit.frag.glsl"),
 );
 
 pub static MINIMAP: Descriptor<3, 3, 2> = Descriptor::new(
@@ -76,16 +70,8 @@ pub static MINIMAP: Descriptor<3, 3, 2> = Descriptor::new(
         varying_declare!(texcoord, UniformType::FloatVec2),
         varying_declare!(color, UniformType::Color),
     ],
-    "vec4 vert() {
-    v_texcoord = a_texcoord;
-    v_color = a_color;
-    return u_view_projection * u_model * vec4(a_position, 1.0);
-}",
-    "vec4 frag() {
-    float mask = 1.0 - smoothstep(0.49, 0.5, length(v_color.rg - vec2(0.5)));
-    vec4 tex = texture(u_texture, v_texcoord);
-    return vec4(tex.rgb, tex.a * mask);
-}",
+    include_str!("glsl/minimap.vert.glsl"),
+    include_str!("glsl/minimap.frag.glsl"),
 );
 
 pub static SPLAT: Descriptor<3, 3, 2> = Descriptor::new(
@@ -119,19 +105,8 @@ pub static SPLAT: Descriptor<3, 3, 2> = Descriptor::new(
         varying_declare!(texcoord, UniformType::FloatVec2),
         varying_declare!(color, UniformType::Color),
     ],
-    "vec4 vert() {
-    v_texcoord = a_texcoord;
-    v_color = a_color;
-    return u_view_projection * u_model * vec4(a_position, 1.0);
-}",
-    "float crop_edges(vec2 tc) {
-    return step(abs(tc.x - 0.5), 0.5) * step(abs(tc.y - 0.5), 0.5);
-}
-vec4 frag() {
-    vec4 col = texture(u_texture, v_texcoord) * v_color;
-    col.a *= crop_edges(v_texcoord);
-    return col;
-}",
+    include_str!("glsl/splat.vert.glsl"),
+    include_str!("glsl/splat.frag.glsl"),
 );
 
 pub static SHADOW_SPLAT: Descriptor<6, 3, 2> = Descriptor::new(
@@ -183,27 +158,8 @@ pub static SHADOW_SPLAT: Descriptor<6, 3, 2> = Descriptor::new(
         varying_declare!(texcoord, UniformType::FloatVec2),
         varying_declare!(color, UniformType::Color),
     ],
-    "vec4 vert() {
-    v_texcoord = a_texcoord;
-    v_color = a_color;
-    return u_view_projection * u_model * vec4(a_position, 1.0);
-}",
-    "float crop_edges(vec2 tc) {
-    return step(abs(tc.x - 0.5), 0.5) * step(abs(tc.y - 0.5), 0.5);
-}
-vec4 frag() {
-    vec4 tex = texture(u_texture, v_texcoord);
-    vec4 col = vec4(0.0, 0.0, 0.0, tex.a * v_color.a * crop_edges(v_texcoord));
-    if (u_fog_enable) {
-        float fog_range = u_fog_params.y - u_fog_params.x;
-        float depth = gl_FragCoord.z / gl_FragCoord.w;
-        float fog_factor = abs(fog_range) > 0.0001
-            ? clamp((u_fog_params.y - depth) / fog_range, 0.0, 1.0)
-            : (depth <= u_fog_params.x ? 1.0 : 0.0);
-        col.rgb = mix(u_fog_color, col.rgb, fog_factor);
-    }
-    return col;
-}",
+    include_str!("glsl/shadow_splat.vert.glsl"),
+    include_str!("glsl/shadow_splat.frag.glsl"),
 );
 
 pub static COMMANDBUTTON: Descriptor<5, 3, 2> = Descriptor::new(
@@ -249,26 +205,8 @@ pub static COMMANDBUTTON: Descriptor<5, 3, 2> = Descriptor::new(
         varying_declare!(texcoord, UniformType::FloatVec2),
         varying_declare!(color, UniformType::Color),
     ],
-    "vec4 vert() {
-    v_texcoord = a_texcoord;
-    v_color = a_color;
-    return u_view_projection * u_model * vec4(a_position, 1.0);
-}",
-    "vec4 frag() {
-    vec4 col = texture(u_texture, v_texcoord) * v_color;
-    float glow = max(abs(v_texcoord.x - 0.5), abs(v_texcoord.y - 0.5));
-    glow = smoothstep(0.33, 0.5, glow) * 0.75 * u_active_glow;
-    col.rgb = mix(col.rgb, vec3(0.5, 1.0, 0.5), glow);
-    vec2 radial = v_texcoord - vec2(0.5);
-    float angle = atan(radial.x, -radial.y) / 6.28318530718;
-    angle = angle < 0.0 ? angle + 1.0 : angle;
-    float elapsed = 1.0 - clamp(u_radial_shade, 0.0, 1.0);
-    float shade = step(elapsed, angle) * step(0.000001, u_radial_shade);
-    col.rgb *= mix(1.0, 0.35, shade);
-    float crop = step(abs(v_texcoord.x - 0.5), 0.5) * step(abs(v_texcoord.y - 0.5), 0.5);
-    col.a *= crop;
-    return col;
-}",
+    include_str!("glsl/commandbutton.vert.glsl"),
+    include_str!("glsl/commandbutton.frag.glsl"),
 );
 
 pub static MINIMAP_FOG: Descriptor<3, 3, 2> = Descriptor::new(
@@ -302,14 +240,6 @@ pub static MINIMAP_FOG: Descriptor<3, 3, 2> = Descriptor::new(
         varying_declare!(texcoord, UniformType::FloatVec2),
         varying_declare!(color, UniformType::Color),
     ],
-    "vec4 vert() {
-    v_texcoord = a_texcoord;
-    v_color = a_color;
-    return u_view_projection * u_model * vec4(a_position, 1.0);
-}",
-    "vec4 frag() {
-    float visibility = texture(u_texture, vec2(v_texcoord.x, 1.0 - v_texcoord.y)).r;
-    float alpha = clamp(1.0 - visibility, 0.0, 1.0) * v_color.a;
-    return vec4(v_color.rgb, alpha);
-}",
+    include_str!("glsl/minimap_fog.vert.glsl"),
+    include_str!("glsl/minimap_fog.frag.glsl"),
 );
