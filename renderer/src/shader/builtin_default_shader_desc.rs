@@ -4,7 +4,7 @@ use crate::{
     uniform_declare, varying_declare,
 };
 
-pub static DEFAULT: Descriptor<13, 4, 8> = Descriptor::new(
+pub static DEFAULT_SHADER: Descriptor<13, 4, 8> = Descriptor::new(
     "default",
     [
         uniform_declare!(

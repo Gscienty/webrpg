@@ -4,7 +4,7 @@ use crate::{
     uniform_declare, varying_declare,
 };
 
-pub static MODEL: Descriptor<21, 6, 6> = Descriptor::new(
+pub static MODEL_SHADER: Descriptor<21, 6, 6> = Descriptor::new(
     "model",
     [
         uniform_declare!(
@@ -151,7 +151,7 @@ pub static MODEL: Descriptor<21, 6, 6> = Descriptor::new(
     include_str!("glsl/model.frag.glsl"),
 );
 
-pub static MODEL_INSTANCED: Descriptor<20, 7, 6> = Descriptor::new(
+pub static MODEL_INSTANCED_SHADER: Descriptor<20, 7, 6> = Descriptor::new(
     "model_instanced",
     [
         uniform_declare!(

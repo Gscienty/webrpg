@@ -4,7 +4,7 @@ use crate::{
     uniform_declare, varying_declare,
 };
 
-pub static UNLIT: Descriptor<3, 3, 2> = Descriptor::new(
+pub static UNLIT_SHADER: Descriptor<3, 3, 2> = Descriptor::new(
     "unlit",
     [
         uniform_declare!(
@@ -39,7 +39,7 @@ pub static UNLIT: Descriptor<3, 3, 2> = Descriptor::new(
     include_str!("glsl/unlit.frag.glsl"),
 );
 
-pub static MINIMAP: Descriptor<3, 3, 2> = Descriptor::new(
+pub static MINIMAP_SHADER: Descriptor<3, 3, 2> = Descriptor::new(
     "minimap",
     [
         uniform_declare!(
@@ -74,7 +74,7 @@ pub static MINIMAP: Descriptor<3, 3, 2> = Descriptor::new(
     include_str!("glsl/minimap.frag.glsl"),
 );
 
-pub static SPLAT: Descriptor<3, 3, 2> = Descriptor::new(
+pub static SPLAT_SHADER: Descriptor<3, 3, 2> = Descriptor::new(
     "splat",
     [
         uniform_declare!(
@@ -109,7 +109,7 @@ pub static SPLAT: Descriptor<3, 3, 2> = Descriptor::new(
     include_str!("glsl/splat.frag.glsl"),
 );
 
-pub static SHADOW_SPLAT: Descriptor<6, 3, 2> = Descriptor::new(
+pub static SHADOW_SPLAT_SHADER: Descriptor<6, 3, 2> = Descriptor::new(
     "shadow_splat",
     [
         uniform_declare!(
@@ -162,7 +162,7 @@ pub static SHADOW_SPLAT: Descriptor<6, 3, 2> = Descriptor::new(
     include_str!("glsl/shadow_splat.frag.glsl"),
 );
 
-pub static COMMANDBUTTON: Descriptor<5, 3, 2> = Descriptor::new(
+pub static COMMANDBUTTON_SHADER: Descriptor<5, 3, 2> = Descriptor::new(
     "commandbutton",
     [
         uniform_declare!(
@@ -209,7 +209,7 @@ pub static COMMANDBUTTON: Descriptor<5, 3, 2> = Descriptor::new(
     include_str!("glsl/commandbutton.frag.glsl"),
 );
 
-pub static MINIMAP_FOG: Descriptor<3, 3, 2> = Descriptor::new(
+pub static MINIMAP_FOG_SHADER: Descriptor<3, 3, 2> = Descriptor::new(
     "minimap_fog",
     [
         uniform_declare!(

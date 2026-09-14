@@ -1,4 +1,6 @@
 mod desc;
+mod error;
+mod program;
 
 mod default_state;
 mod model_state;
@@ -9,13 +11,16 @@ mod builtin_model_shader_desc;
 mod builtin_sprite_shader_desc;
 
 pub use desc::{Attribute, AttributeID, Descriptor, PrecisionType, Uniform, UniformType, Varying};
+pub use error::Error;
+pub use program::Program;
 
 pub use default_state::DefaultState;
 pub use model_state::ModelState;
 pub use sprite_state::SpriteState;
 
-pub use builtin_default_shader_desc::DEFAULT;
-pub use builtin_model_shader_desc::{MODEL, MODEL_INSTANCED};
+pub use builtin_default_shader_desc::DEFAULT_SHADER;
+pub use builtin_model_shader_desc::{MODEL_INSTANCED_SHADER, MODEL_SHADER};
 pub use builtin_sprite_shader_desc::{
-    COMMANDBUTTON, MINIMAP, MINIMAP_FOG, SHADOW_SPLAT, SPLAT, UNLIT,
+    COMMANDBUTTON_SHADER, MINIMAP_FOG_SHADER, MINIMAP_SHADER, SHADOW_SPLAT_SHADER, SPLAT_SHADER,
+    UNLIT_SHADER,
 };
