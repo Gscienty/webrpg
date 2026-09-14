@@ -1,0 +1,15 @@
+pub struct DefaultState {
+    pub view_projection: shared::math3::Matrix4,
+    pub model: shared::math3::Matrix4,
+    pub texture_matrix: shared::math3::Matrix4,
+    pub light_matrix: shared::math3::Matrix4,
+    pub normal_matrix: shared::math3::Matrix3,
+    pub light_count: i32,
+    pub lights: [shared::math3::Matrix4; 8],
+    pub texture: i32,
+    pub shadowmap: i32,
+    pub fog_of_war: i32,
+    pub fog_enable: bool,
+    pub fog_color: shared::math3::Vector3,
+    pub fog_params: shared::math3::Vector2,
+}
