@@ -4,6 +4,7 @@ pub enum Error {
     CompileShaderFailed(String),
     CreateProgramFailed,
     LinkProgramFailed(String),
+    InvalidUniformData(&'static str),
 }
 
 impl std::fmt::Display for Error {
@@ -17,6 +18,7 @@ impl std::fmt::Display for Error {
             Self::LinkProgramFailed(message) => {
                 write!(formatter, "failed to link shader program: {message}")
             }
+            Self::InvalidUniformData(name) => write!(formatter, "invalid uniform data: {name}"),
         }
     }
 }

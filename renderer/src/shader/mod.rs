@@ -10,6 +10,8 @@ mod builtin_default_shader_desc;
 mod builtin_model_shader_desc;
 mod builtin_sprite_shader_desc;
 
+mod global;
+
 pub use desc::{Attribute, AttributeID, Descriptor, PrecisionType, Uniform, UniformType, Varying};
 pub use error::Error;
 pub use program::Program;

@@ -47,6 +47,24 @@ impl std::fmt::Display for UniformType {
     }
 }
 
+impl UniformType {
+    pub const fn type_size(&self) -> usize {
+        match self {
+            Self::Float => size_of::<f32>(),
+            Self::FloatVec2 => 2 * size_of::<f32>(),
+            Self::FloatVec3 => 3 * size_of::<f32>(),
+            Self::FloatVec4 | Self::Color => 4 * size_of::<f32>(),
+            Self::Int => size_of::<i32>(),
+            Self::IntVec2 => 2 * size_of::<i32>(),
+            Self::Bool => size_of::<bool>(),
+            Self::FloatMat3 | Self::FloatMat3Transpose => 9 * size_of::<f32>(),
+            Self::FloatMat4 => 16 * size_of::<f32>(),
+            Self::Sampler2D | Self::Sampler2DRect | Self::Sampler2DArray => size_of::<i32>(),
+            _ => size_of::<f32>(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::UniformType;
@@ -84,13 +102,13 @@ pub enum AttributeID {
 
 #[derive(Debug)]
 pub struct Uniform {
-    offset: usize,
-    name: &'static str,
-    typ: UniformType,
+    pub(crate) offset: usize,
+    pub(crate) name: &'static str,
+    pub(crate) typ: UniformType,
     precision: PrecisionType,
-    count: usize,
-    count_offset: usize,
-    counted: bool,
+    pub(crate) count: usize,
+    pub(crate) count_offset: usize,
+    pub(crate) counted: bool,
 }
 
 #[derive(Debug)]
@@ -115,6 +133,10 @@ pub struct Descriptor<const U: usize, const A: usize, const S: usize> {
 
     vertex_body: &'static str,
     fragment_body: &'static str,
+}
+
+pub trait ShaderDescriptor: Sync {
+    fn get_uniforms(&self) -> &[Uniform];
 }
 
 impl Uniform {
@@ -297,7 +319,7 @@ impl<const U: usize, const A: usize, const S: usize> Descriptor<U, A, S> {
         Ok(shader)
     }
 
-    pub fn compile_program(&self, gl: &WebGl2RenderingContext) -> Result<Program, Error> {
+    pub fn compile_program(&'static self, gl: &WebGl2RenderingContext) -> Result<Program, Error> {
         let vertex_shader = self.create_vertex_shader(gl)?;
         let fragment_shader = match self.create_fragment_shader(gl) {
             Ok(shader) => shader,
@@ -349,6 +371,12 @@ impl<const U: usize, const A: usize, const S: usize> Descriptor<U, A, S> {
             })
             .collect();
 
-        Ok(Program::new(program, uniform_locations))
+        Ok(Program::new(self, program, uniform_locations))
+    }
+}
+
+impl<const U: usize, const A: usize, const S: usize> ShaderDescriptor for Descriptor<U, A, S> {
+    fn get_uniforms(&self) -> &[Uniform] {
+        &self.uniforms
     }
 }
