@@ -7,6 +7,17 @@ pub struct Color32 {
     pub alpha: u8,
 }
 
+impl Color32 {
+    pub fn white() -> Self {
+        Self {
+            red: 255,
+            green: 255,
+            blue: 255,
+            alpha: 255,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {

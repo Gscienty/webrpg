@@ -44,19 +44,9 @@ fn render_image(canvas: HtmlCanvasElement, filename: &str, data: &[u8]) -> Resul
     gl.clear_color(0.08, 0.09, 0.11, 1.);
     gl.clear(Gl::COLOR_BUFFER_BIT);
 
-    DrawImage::new(
-        &texture,
-        scene_rect(&global),
-        None,
-        Color32 {
-            red: 255,
-            green: 255,
-            blue: 255,
-            alpha: 255,
-        },
-    )
-    .draw(&global, &gl, &global.ui_buffer)
-    .map_err(js_error)
+    DrawImage::new(&texture, scene_rect(&global), None, Color32::white())
+        .draw(&global, &gl, &global.ui_buffer)
+        .map_err(js_error)
 }
 
 fn js_error(error: impl std::fmt::Display) -> JsValue {
