@@ -1,7 +1,7 @@
 pub mod backdrop;
 pub mod buffer;
 pub mod draw;
-pub mod error;
+mod error;
 pub mod global;
 pub mod render_stats;
 pub mod shader;

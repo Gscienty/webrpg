@@ -67,7 +67,7 @@ impl UniformType {
 
 #[cfg(test)]
 mod tests {
-    use super::UniformType;
+    use super::{AttributeID, UniformType};
 
     #[test]
     fn displays_glsl_type_names() {
@@ -75,6 +75,16 @@ mod tests {
         assert_eq!(UniformType::Color.to_string(), "vec4");
         assert_eq!(UniformType::FloatMat3Transpose.to_string(), "mat3");
         assert_eq!(UniformType::Sampler2DArray.to_string(), "sampler2DArray");
+    }
+
+    #[test]
+    fn attribute_locations_match_vertex_array_layout() {
+        assert_eq!(AttributeID::Color as u32, 0);
+        assert_eq!(AttributeID::Position as u32, 1);
+        assert_eq!(AttributeID::Texcoord as u32, 2);
+        assert_eq!(AttributeID::Skin as u32, 3);
+        assert_eq!(AttributeID::BoneWeight as u32, 4);
+        assert_eq!(AttributeID::Normal as u32, 5);
     }
 }
 
@@ -87,17 +97,18 @@ pub enum PrecisionType {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[repr(u32)]
 pub enum AttributeID {
-    Position,
-    Color,
-    Texcoord,
-    Normal,
-    Skin,
-    BoneWeight,
-    ParticleAxis,
-    ParticleSize,
-    ParticleTail,
-    Instance,
+    Color = 0,
+    Position = 1,
+    Texcoord = 2,
+    Skin = 3,
+    BoneWeight = 4,
+    Normal = 5,
+    ParticleAxis = 6,
+    ParticleSize = 7,
+    ParticleTail = 8,
+    Instance = 9,
 }
 
 #[derive(Debug)]
@@ -339,6 +350,13 @@ impl<const U: usize, const A: usize, const S: usize> Descriptor<U, A, S> {
 
         gl.attach_shader(&program, &vertex_shader);
         gl.attach_shader(&program, &fragment_shader);
+        for attribute in &self.attributes {
+            gl.bind_attrib_location(
+                &program,
+                attribute.attrib as u32,
+                &format!("a_{}", attribute.name),
+            );
+        }
         gl.link_program(&program);
 
         let linked = gl

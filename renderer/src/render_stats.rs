@@ -1,5 +1,6 @@
 use web_sys::WebGl2RenderingContext;
 
+#[derive(Default)]
 pub struct RenderStats {
     pub draws: usize,
     pub vertices: usize,
@@ -21,16 +22,5 @@ impl RenderStats {
         self.vertices += count * instances;
         self.triangles += Self::primitive_triangles(mode, count, instances);
         self.instances += instances;
-    }
-}
-
-impl Default for RenderStats {
-    fn default() -> Self {
-        Self {
-            draws: 0,
-            vertices: 0,
-            triangles: 0,
-            instances: 0,
-        }
     }
 }
