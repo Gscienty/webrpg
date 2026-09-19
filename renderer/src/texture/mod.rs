@@ -17,6 +17,23 @@ pub struct Texture {
 }
 
 impl Texture {
+    pub(crate) fn white(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        let texture = Self::allocate(gl, 1, 1)?;
+        texture.load_texture_mip_level(
+            gl,
+            &[Color32 {
+                red: 255,
+                green: 255,
+                blue: 255,
+                alpha: 255,
+            }],
+            1,
+            1,
+            0,
+        )?;
+        Ok(texture)
+    }
+
     pub fn init(gl: &WebGl2RenderingContext) -> Result<(), Error> {
         gl.get_extension("WEBGL_compressed_texture_s3tc")
             .map_err(|_| Error::UnsupportedTextureFormat)?
@@ -24,7 +41,8 @@ impl Texture {
         Ok(())
     }
 
-    pub fn bind(&self, gl: &WebGl2RenderingContext) {
+    pub fn bind(&self, gl: &WebGl2RenderingContext, unit: u32) {
+        gl.active_texture(WebGl2RenderingContext::TEXTURE0 + unit);
         gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.texture));
     }
 

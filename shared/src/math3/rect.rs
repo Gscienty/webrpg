@@ -4,10 +4,10 @@ use super::Vector2;
 
 #[derive(PartialEq, Clone, Copy, Default, Debug)]
 pub struct Rect {
-    pub(crate) x: f32,
-    pub(crate) y: f32,
-    pub(crate) w: f32,
-    pub(crate) h: f32,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
 }
 
 impl Mul<f32> for Rect {
@@ -32,6 +32,10 @@ impl Div<f32> for Rect {
 }
 
 impl Rect {
+    pub fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
+        Self { x, y, w, h }
+    }
+
     pub fn contains(&self, point: Vector2) -> bool {
         point.x >= self.x
             && point.x <= self.x + self.w

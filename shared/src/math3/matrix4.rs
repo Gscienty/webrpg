@@ -68,6 +68,17 @@ impl Matrix4 {
         }
     }
 
+    pub fn zero() -> Self {
+        Self {
+            columns: [
+                Vector4::from((0., 0., 0., 0.)),
+                Vector4::from((0., 0., 0., 0.)),
+                Vector4::from((0., 0., 0., 0.)),
+                Vector4::from((0., 0., 0., 0.)),
+            ],
+        }
+    }
+
     pub fn from_rotation_origin(rotation: Quaternion, origin: Vector3) -> Self {
         Self::identity()
             .translate(origin)
@@ -217,16 +228,8 @@ impl Matrix4 {
         }
     }
 
-    pub fn ortho(
-        self,
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        znear: f32,
-        zfar: f32,
-    ) -> Self {
-        self * Self {
+    pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, znear: f32, zfar: f32) -> Self {
+        Self {
             columns: [
                 Vector4::from((2. / (right - left), 0., 0., 0.)),
                 Vector4::from((0., 2. / (top - bottom), 0., 0.)),

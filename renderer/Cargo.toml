@@ -9,6 +9,7 @@ jpeg-decoder = { version = "0.3", default-features = false, features = [
   "platform_independent",
 ] }
 shared = { path = "../shared" }
+strum = { version = "0.28", features = ["derive"] }
 web-sys = { version = "0.3", features = [
   "console",
   "WebGl2RenderingContext",

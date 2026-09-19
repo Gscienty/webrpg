@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Neg, Sub};
+use std::ops::{Add, Index, Mul, Neg, Sub};
 
 #[derive(PartialEq, Clone, Copy, Default, Debug)]
 pub struct Vector2 {
@@ -9,6 +9,18 @@ pub struct Vector2 {
 impl From<(f32, f32)> for Vector2 {
     fn from((x, y): (f32, f32)) -> Self {
         Self { x, y }
+    }
+}
+
+impl Index<usize> for Vector2 {
+    type Output = f32;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        match index {
+            0 => &self.x,
+            1 => &self.y,
+            _ => unreachable!(),
+        }
     }
 }
 

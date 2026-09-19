@@ -20,3 +20,15 @@ impl IndexMut<usize> for Matrix3 {
         &mut self.v[index]
     }
 }
+
+impl Matrix3 {
+    pub fn zero() -> Self {
+        Self {
+            v: [
+                Vector3::from((0., 0., 0.)),
+                Vector3::from((0., 0., 0.)),
+                Vector3::from((0., 0., 0.)),
+            ],
+        }
+    }
+}

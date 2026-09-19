@@ -1,6 +1,8 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     CreateShaderFailed,
+    CreateVertexArrayFailed,
+    CreateBufferFailed,
     CompileShaderFailed(String),
     CreateProgramFailed,
     LinkProgramFailed(String),
@@ -11,6 +13,8 @@ impl std::fmt::Display for Error {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CreateShaderFailed => formatter.write_str("failed to create shader"),
+            Self::CreateVertexArrayFailed => formatter.write_str("failed to create vertex array"),
+            Self::CreateBufferFailed => formatter.write_str("failed to create buffer"),
             Self::CompileShaderFailed(message) => {
                 write!(formatter, "failed to compile shader: {message}")
             }

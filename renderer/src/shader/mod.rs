@@ -2,6 +2,9 @@ mod desc;
 mod error;
 mod program;
 
+mod grass;
+mod light;
+
 mod default_state;
 mod model_state;
 mod sprite_state;
@@ -16,6 +19,9 @@ pub use desc::{Attribute, AttributeID, Descriptor, PrecisionType, Uniform, Unifo
 pub use error::Error;
 pub use program::Program;
 
+pub use grass::ModelGrass;
+pub use light::{EnvironLight, LightType, ModelLight, ModelLighting};
+
 pub use default_state::DefaultState;
 pub use model_state::ModelState;
 pub use sprite_state::SpriteState;
@@ -26,3 +32,5 @@ pub use builtin_sprite_shader_desc::{
     COMMANDBUTTON_SHADER, MINIMAP_FOG_SHADER, MINIMAP_SHADER, SHADOW_SPLAT_SHADER, SPLAT_SHADER,
     UNLIT_SHADER,
 };
+
+pub use global::{Global, ShaderType};
