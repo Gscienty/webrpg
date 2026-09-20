@@ -12,8 +12,8 @@ use web_sys::{WebGl2RenderingContext, WebGlTexture, WebglCompressedTextureS3tc};
 
 pub struct Texture {
     texture: WebGlTexture,
-    width: u32,
-    height: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Texture {

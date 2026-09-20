@@ -1,4 +1,7 @@
-use std::mem::offset_of;
+use std::{
+    mem::offset_of,
+    ops::{Index, IndexMut},
+};
 
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlVertexArrayObject};
 
@@ -33,6 +36,20 @@ impl RenderBuffer {
 
 #[derive(Default)]
 pub struct Vertices(Vec<Vertex>);
+
+impl Index<usize> for Vertices {
+    type Output = Vertex;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for Vertices {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
 
 impl Vertices {
     pub(crate) fn as_bytes(&self) -> &[u8] {
