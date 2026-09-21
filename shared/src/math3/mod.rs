@@ -1,6 +1,7 @@
 mod box2;
 mod box3;
 mod frustum3;
+mod lerp_number;
 mod line3;
 mod matrix3;
 mod matrix4;
@@ -16,6 +17,7 @@ mod vector4;
 pub use box2::Box2;
 pub use box3::Box3;
 pub use frustum3::{Frustum3, FrustumContains};
+pub use lerp_number::lerp_number;
 pub use line3::{Line3, Line3Intersect};
 pub use matrix3::Matrix3;
 pub use matrix4::Matrix4;

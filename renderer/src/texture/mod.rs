@@ -17,9 +17,19 @@ pub struct Texture {
 }
 
 impl Texture {
+    pub(crate) fn from_pixels(
+        gl: &WebGl2RenderingContext,
+        pixels: &[Color32],
+        width: u32,
+        height: u32,
+    ) -> Result<Self, Error> {
+        let texture = Self::allocate(gl, width, height)?;
+        texture.load_texture_mip_level(gl, pixels, width, height, 0)?;
+        Ok(texture)
+    }
+
     pub(crate) fn white(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
-        let texture = Self::allocate(gl, 1, 1)?;
-        texture.load_texture_mip_level(
+        Self::from_pixels(
             gl,
             &[Color32 {
                 red: 255,
@@ -29,9 +39,7 @@ impl Texture {
             }],
             1,
             1,
-            0,
-        )?;
-        Ok(texture)
+        )
     }
 
     pub fn init(gl: &WebGl2RenderingContext) -> Result<(), Error> {

@@ -26,3 +26,4 @@ web-sys = { version = "0.3", features = [
   "WebGlTransformFeedback",
   "WebGlContextAttributes",
 ] }
+fontdue = "0.9.4"

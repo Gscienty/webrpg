@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebRPG Span 文字渲染示例</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-content: center; gap: 1rem; color: #e4e4e7; background: #18181b; font: 16px system-ui; }
+      .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+      textarea { box-sizing: border-box; width: min(90vw, 960px); min-height: 6rem; padding: .75rem; color: inherit; background: #27272a; border: 1px solid #52525b; }
+      canvas { width: min(90vw, 960px); height: auto; border: 1px solid #52525b; }
+      #status { min-height: 1.5em; color: #a1a1aa; }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label>TTF / TTC：<input id="font-file" type="file" accept=".ttf,.ttc,font/ttf,font/collection" /></label>
+      <label>字号：<input id="font-size" type="number" min="1" max="256" value="48" /></label>
+      <label>颜色：<input id="font-color" type="color" value="#f8fafc" /></label>
+    </div>
+    <textarea id="text">你好，WebRPG！
+这段文字由 Span 渲染。</textarea>
+    <canvas id="canvas" width="960" height="480"></canvas>
+    <div id="status">请选择一个 TTF 或 TTC 字体文件</div>
+    <script type="module" src="./index.js"></script>
+  </body>
+</html>
