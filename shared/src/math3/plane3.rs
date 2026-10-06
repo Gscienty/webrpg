@@ -18,6 +18,10 @@ impl Mul<Vector3> for Plane3 {
 }
 
 impl Plane3 {
+    pub fn new(normal: Vector3, distance: f32) -> Self {
+        Self { normal, distance }
+    }
+
     pub fn normalize(&self) -> Self {
         let magnitude = self.normal.length();
 

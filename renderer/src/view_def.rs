@@ -1,0 +1,150 @@
+use shared::math3::Line3Intersect;
+
+use crate::{
+    global::Global,
+    render_entity::{RenderEntity, RenderEntityFlag},
+    shader::EnvironLight,
+    terrian_mask::TerrainMask,
+};
+
+#[derive(Default, Clone, Copy)]
+pub struct ViewCamera {
+    pub origin: shared::math3::Vector3,
+    pub eye: shared::math3::Vector3,
+    pub view_angles: shared::math3::Vector3,
+    pub distance: f32,
+    pub fov: f32,
+    pub znear: f32,
+    pub zfar: f32,
+}
+
+pub struct ViewDef {
+    pub camera_state: [ViewCamera; 2],
+    pub target: shared::math3::Vector3,
+    pub viewport: shared::math3::Rect,
+    pub scissor: shared::math3::Rect,
+    pub time: u32,
+    pub delta_time: u32,
+    pub lerpfrac: f32,
+    pub entities: Vec<RenderEntity>,
+    // TODO: decials
+    // TODO: splat_rects
+    // TODO: weather_effects
+    // TODO: lightning_effects
+    pub view_projection_matrix: shared::math3::Matrix4,
+    pub light_matrix: shared::math3::Matrix4,
+    pub texture_matrix: shared::math3::Matrix4,
+    // TODO: model: terrian light / entity light / sky model
+    pub environment_phase: f32,
+    pub terrain_light: EnvironLight,
+    pub entity_light: EnvironLight,
+    pub player: usize,
+    pub rdflags: u32,
+    pub hover_entity: usize,
+    pub fow_width: u32,
+    pub fow_height: u32,
+    pub fow_generation: u32,
+    // TODO: fow_data
+    pub terrian_mask: TerrainMask,
+    pub frustum: shared::math3::Frustum3,
+    pub fog_enable: bool,
+    pub fog_start: f32,
+    pub fog_end: f32,
+    pub fog_color: shared::math3::Vector3,
+}
+
+impl ViewDef {
+    pub fn point_to_view_space(&self, global: &Global, x: f32, y: f32) -> shared::math3::Vector2 {
+        let mut viewport = self.viewport;
+        if viewport.w <= 0. || viewport.h <= 0. {
+            viewport = shared::math3::Rect::new(0., 0., 1., 1.);
+        }
+
+        let window_width = global.window_width as f32;
+        let window_height = global.window_height as f32;
+        let left = viewport.x * window_width;
+        let top = (1. - viewport.y - viewport.h) * window_height;
+        let width = viewport.w * window_width;
+        let height = viewport.h * window_height;
+
+        (
+            ((x - left) / width - 0.5) * 2.,
+            (0.5 - (y - top) / height) * 2.,
+        )
+            .into()
+    }
+
+    pub fn line_for_screen_point(&self, global: &Global, x: f32, y: f32) -> shared::math3::Line3 {
+        let inverse = self.view_projection_matrix.inverse();
+        let point = self.point_to_view_space(global, x, y);
+
+        shared::math3::Line3::from((
+            inverse * shared::math3::Vector3::from((point[0], point[1], 0.)),
+            inverse * shared::math3::Vector3::from((point[0], point[1], 1.)),
+        ))
+    }
+
+    pub fn trace_camera_plane(
+        &self,
+        global: &Global,
+        x: f32,
+        y: f32,
+    ) -> Option<shared::math3::Vector3> {
+        let line = self.line_for_screen_point(global, x, y);
+        let plane =
+            shared::math3::Plane3::new(shared::math3::Vector3::from((0., 0., 1.)), -self.target[2]);
+
+        line.intersect(plane)
+    }
+
+    pub fn trace_entity(&self, x: f32, y: f32) -> Option<u32> {
+        // TODO
+        None
+    }
+
+    pub fn entities_in_rect(
+        &self,
+        global: &Global,
+        rect: shared::math3::Rect,
+        max: u32,
+    ) -> Vec<u32> {
+        if max == 0 {
+            return Vec::new();
+        }
+
+        let a = self.point_to_view_space(global, rect.x, rect.y);
+        let b = self.point_to_view_space(global, rect.x + rect.w, rect.y + rect.h);
+        let screen = shared::math3::Rect::new(
+            a[0].min(b[0]),
+            a[1].min(b[1]),
+            (a[0] - b[0]).abs(),
+            (a[1] - b[1]).abs(),
+        );
+
+        self.entities
+            .iter()
+            .filter(|entity| {
+                let origin = self.view_projection_matrix * entity.origin;
+                entity.number != 0
+                    && entity.flags
+                        & (RenderEntityFlag::Hidden as u32 | RenderEntityFlag::NotSelectable as u32)
+                        == 0
+                    && screen.contains((origin[0], origin[1]).into())
+            })
+            .take(max as usize)
+            .map(|entity| entity.number)
+            .collect()
+    }
+
+    pub fn collect_revealers(&self, max_revealers: usize) -> Vec<&RenderEntity> {
+        self.entities
+            .iter()
+            .filter(|entity| {
+                entity.team == self.player as u32
+                    && entity.flags & RenderEntityFlag::Hidden as u32 == 0
+                    && entity.flags & RenderEntityFlag::FogOfWarRevealer as u32 != 0
+            })
+            .take(max_revealers)
+            .collect()
+    }
+}

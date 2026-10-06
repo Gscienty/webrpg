@@ -18,6 +18,7 @@ pub struct ModelLight {
     pub typ: LightType,
 }
 
+#[derive(Clone, Copy)]
 pub struct EnvironLight {
     pub dir: shared::math3::Vector3,
     pub color: shared::math3::Vector3,

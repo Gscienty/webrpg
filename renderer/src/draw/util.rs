@@ -1,36 +1,14 @@
+use shared::BlendMode;
 use web_sys::WebGl2RenderingContext;
 
 use crate::{
     Error,
     buffer::{RenderBuffer, Vertices},
+    draw::set_blending,
     global::Global,
     shader::{ShaderType, SpriteState},
     texture::Texture,
 };
-
-#[derive(Clone, Copy)]
-pub enum BlendMode {
-    None,
-    AlphaKey,
-    Blend,
-    Add,
-    AddAlpha,
-    Modulate,
-    Modulate2X,
-}
-
-pub struct DrawImage<'s> {
-    pub texture: &'s Texture,
-    pub shader_type: ShaderType,
-    pub alpha_mode: BlendMode,
-    pub screen: shared::math3::Rect,
-    pub uv: shared::math3::Rect,
-    pub color: shared::color::Color32,
-    pub angle: f32,
-    pub active_glow: f32,
-    pub radial_shade: f32,
-    pub clip: Option<shared::math3::Rect>,
-}
 
 pub const DRAW_CLIP: u8 = 1 << 0;
 
@@ -99,24 +77,13 @@ pub fn draw_fill(
         ..Default::default()
     };
 
-    global.shader.apply(gl, ShaderType::UI, &state)?;
+    global.builtin_shader.apply(gl, ShaderType::UI, &state)?;
     gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
 
     Ok(())
 }
 
-pub fn set_blending(gl: &WebGl2RenderingContext, mode: BlendMode) {
-    if matches!(mode, BlendMode::Add) {
-        gl.blend_func(WebGl2RenderingContext::ONE, WebGl2RenderingContext::ONE);
-    } else {
-        gl.blend_func(
-            WebGl2RenderingContext::SRC_ALPHA,
-            WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
-        );
-    }
-}
-
-fn ui_clip_scissor(
+pub(super) fn ui_clip_scissor(
     drawable_width: u32,
     drawable_height: u32,
     clip: &shared::math3::Rect,
@@ -254,7 +221,7 @@ pub fn draw_image(
         .render_stats
         .borrow_mut()
         .draw(WebGl2RenderingContext::TRIANGLES, vertices.len(), 1);
-    global.shader.apply(gl, shader_type, &state)?;
+    global.builtin_shader.apply(gl, shader_type, &state)?;
     gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
     if clip.is_some() {
         reset_ui_scissor(global, gl);
@@ -266,75 +233,4 @@ pub fn draw_image(
     );
 
     Ok(())
-}
-
-impl<'s> DrawImage<'s> {
-    pub fn new(
-        texture: &'s Texture,
-        screen: shared::math3::Rect,
-        uv: Option<shared::math3::Rect>,
-        color: shared::color::Color32,
-    ) -> Self {
-        Self {
-            texture,
-            screen,
-            uv: uv.unwrap_or(shared::math3::Rect::new(0., 0., 1., 1.)),
-            color,
-            shader_type: ShaderType::UI,
-            alpha_mode: BlendMode::None,
-            active_glow: 0.,
-            angle: 0.,
-            clip: None,
-            radial_shade: 0.,
-        }
-    }
-
-    pub fn draw(
-        &self,
-        global: &Global,
-        gl: &WebGl2RenderingContext,
-        buffer: &RenderBuffer,
-    ) -> Result<(), Error> {
-        let mut vertices = Vertices::default();
-        vertices.add_quad(&self.screen, &self.uv, self.color, 0.);
-
-        if self.angle != 0. {
-            vertices.rotate_2d(
-                self.screen.x + self.screen.w * 0.5,
-                self.screen.y + self.screen.h * 0.5,
-                self.angle.to_radians(),
-            );
-        }
-
-        draw_image(
-            global,
-            gl,
-            buffer,
-            self.texture,
-            self.shader_type,
-            self.alpha_mode,
-            self.active_glow,
-            self.radial_shade,
-            self.clip,
-            &vertices,
-            self.uv.w > 1. || self.uv.h > 1.,
-        )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn converts_and_clamps_ui_clip_to_scissor_pixels() {
-        assert_eq!(
-            ui_clip_scissor(800, 600, &shared::math3::Rect::new(0.2, 0.15, 0.4, 0.3)),
-            (200, 150, 400, 300)
-        );
-        assert_eq!(
-            ui_clip_scissor(800, 600, &shared::math3::Rect::new(-1., -1., 3., 3.)),
-            (0, 0, 800, 600)
-        );
-    }
 }

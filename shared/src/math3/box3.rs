@@ -1,5 +1,6 @@
 use super::Vector3;
 
+#[repr(C)]
 #[derive(PartialEq, Clone, Copy, Default, Debug)]
 pub struct Box3 {
     pub min: Vector3,

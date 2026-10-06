@@ -1,5 +1,5 @@
 use fontdue::{Font, FontSettings};
-use renderer::{font::Span, global::Global};
+use renderer::{draw::Span, global::Global};
 use shared::color::Color32;
 use wasm_bindgen::{JsCast, JsValue, prelude::wasm_bindgen};
 use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as Gl};

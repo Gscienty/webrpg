@@ -2,12 +2,20 @@ use std::ops::{Add, Mul, Neg};
 
 use super::{Matrix4, Vector3};
 
+#[repr(C)]
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub struct Quaternion {
-    pub(crate) x: f32,
-    pub(crate) y: f32,
-    pub(crate) z: f32,
-    pub(crate) w: f32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+}
+
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub struct Orientation {
+    pub yaw: f32,
+    pub pitch: f32,
+    pub roll: f32,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -26,9 +34,36 @@ impl Default for Quaternion {
     }
 }
 
+impl Default for Orientation {
+    fn default() -> Self {
+        Self::from((0., 0., 0.))
+    }
+}
+
 impl From<(f32, f32, f32, f32)> for Quaternion {
     fn from((x, y, z, w): (f32, f32, f32, f32)) -> Self {
         Self { x, y, z, w }
+    }
+}
+
+impl From<(f32, f32, f32)> for Orientation {
+    fn from((yaw, pitch, roll): (f32, f32, f32)) -> Self {
+        Self { yaw, pitch, roll }
+    }
+}
+
+impl From<&Orientation> for Quaternion {
+    fn from(value: &Orientation) -> Self {
+        let (sy, cy) = (value.yaw * 0.5).sin_cos();
+        let (sp, cp) = (-value.pitch * 0.5).sin_cos();
+        let (sr, cr) = (value.roll * 0.5).sin_cos();
+
+        Self::from((
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+            cr * cp * cy + sr * sp * sy,
+        ))
     }
 }
 

@@ -1,14 +1,10 @@
+use shared::BlendMode;
 use std::collections::BTreeMap;
 use strum::{EnumIter, IntoEnumIterator};
 use web_sys::WebGl2RenderingContext;
 
 use crate::{
-    Error,
-    buffer::Vertices,
-    draw::{BlendMode, draw_image},
-    global::Global,
-    shader::ShaderType,
-    texture::Texture,
+    Error, buffer::Vertices, draw::draw_image, global::Global, shader::ShaderType, texture::Texture,
 };
 
 pub const DRAW_CLIP: u8 = 1 << 0;

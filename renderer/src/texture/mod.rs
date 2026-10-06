@@ -8,7 +8,7 @@ mod stb;
 
 pub use error::Error;
 use shared::color::Color32;
-use web_sys::{WebGl2RenderingContext, WebGlTexture, WebglCompressedTextureS3tc};
+use web_sys::{WebGl2RenderingContext, WebGlFramebuffer, WebGlTexture, WebglCompressedTextureS3tc};
 
 pub struct Texture {
     texture: WebGlTexture,
@@ -17,6 +17,11 @@ pub struct Texture {
 }
 
 impl Texture {
+    fn smooth_step(edge0: f32, edge1: f32, x: f32) -> f32 {
+        let t = ((x - edge0) / (edge1 - edge0)).clamp(0., 1.);
+        t * t * (3. - 2. * t)
+    }
+
     pub(crate) fn from_pixels(
         gl: &WebGl2RenderingContext,
         pixels: &[Color32],
@@ -40,6 +45,112 @@ impl Texture {
             1,
             1,
         )
+    }
+
+    pub(crate) fn black(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        Self::from_pixels(
+            gl,
+            &[Color32 {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 255,
+            }],
+            1,
+            1,
+        )
+    }
+
+    pub(crate) fn placeholder(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        const SIZE: usize = 16;
+        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+            let (x, y) = (i % 16, i / 16);
+            if (x ^ y) & 1 != 0 {
+                Color32 {
+                    red: 255,
+                    green: 0,
+                    blue: 255,
+                    alpha: 255,
+                }
+            } else {
+                Color32 {
+                    red: 0,
+                    green: 0,
+                    blue: 0,
+                    alpha: 255,
+                }
+            }
+        });
+
+        Self::from_pixels(gl, &pixels, SIZE as u32, SIZE as u32)
+    }
+
+    pub(crate) fn loading_indicator(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        const SIZE: usize = 128;
+        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+            let x = i % SIZE;
+            let y = i / SIZE;
+            let fx = 1. - (x as f32 + 0.5) / SIZE as f32 * 2.;
+            let fy = (y as f32 + 0.5) / SIZE as f32 * 2. - 1.;
+            let distance = (fx * fx + fy * fy).sqrt();
+            let angle = (fy.atan2(fx) / std::f32::consts::TAU).rem_euclid(1.);
+            let outer = 0.92;
+            let inner = outer * 0.68;
+            let edge = 0.035;
+            let ring = Self::smooth_step(inner - edge, inner, distance)
+                * (1. - Self::smooth_step(outer, outer + edge, distance));
+
+            Color32 {
+                red: 255,
+                green: 255,
+                blue: 255,
+                alpha: (255. * ring * angle) as u8,
+            }
+        });
+
+        Self::from_pixels(gl, &pixels, SIZE as u32, SIZE as u32)
+    }
+
+    pub(crate) fn blob_shadow(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        const SIZE: usize = 64;
+        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+            let x = i % SIZE;
+            let y = i / SIZE;
+            let fx = (x as f32 + 0.5) / SIZE as f32 * 2. - 1.;
+            let fy = (y as f32 + 0.5) / SIZE as f32 * 2. - 1.;
+            let distance = (fx * fx + fy * fy).sqrt();
+            let alpha = 1. - Self::smooth_step(0.25, 1., distance);
+
+            Color32 {
+                red: 255,
+                green: 255,
+                blue: 255,
+                alpha: (alpha * 255.) as u8,
+            }
+        });
+
+        Self::from_pixels(gl, &pixels, SIZE as u32, SIZE as u32)
+    }
+
+    pub(crate) fn sight(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        const SIGHT_SIZE: usize = 256;
+
+        let mid = SIGHT_SIZE as f32 / 2.;
+        let pixels = (0..SIGHT_SIZE * SIGHT_SIZE)
+            .map(|i| {
+                let distance = (i % SIGHT_SIZE) as f32 - mid;
+                let distance_y = (i / SIGHT_SIZE) as f32 - mid;
+                let alpha = ((1. - distance.hypot(distance_y) / mid).max(0.) * 2.).min(1.);
+                Color32 {
+                    red: 255,
+                    green: 255,
+                    blue: 255,
+                    alpha: (alpha * 255.) as u8,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Self::from_pixels(gl, &pixels, SIGHT_SIZE as u32, SIGHT_SIZE as u32)
     }
 
     pub fn init(gl: &WebGl2RenderingContext) -> Result<(), Error> {
@@ -371,5 +482,99 @@ impl Texture {
 
     pub fn drop(&self, gl: &WebGl2RenderingContext) {
         gl.delete_texture(Some(&self.texture));
+    }
+}
+
+pub struct RenderTarget {
+    pub texture: WebGlTexture,
+    pub buffer: WebGlFramebuffer,
+}
+
+impl RenderTarget {
+    pub fn new(
+        gl: &WebGl2RenderingContext,
+        width: u32,
+        height: u32,
+        format: u32,
+        typ: u32,
+        attachment: u32,
+    ) -> Result<Self, Error> {
+        let buffer = gl
+            .create_framebuffer()
+            .ok_or(Error::CreateFramebufferFailed)?;
+        let texture = match gl.create_texture() {
+            Some(texture) => texture,
+            None => {
+                gl.delete_framebuffer(Some(&buffer));
+                return Err(Error::CreateTextureFailed);
+            }
+        };
+
+        gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&buffer));
+        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&texture));
+        for parameter in [
+            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
+            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
+        ] {
+            gl.tex_parameteri(
+                WebGl2RenderingContext::TEXTURE_2D,
+                parameter,
+                WebGl2RenderingContext::LINEAR as i32,
+            );
+        }
+
+        let result = gl
+            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+                WebGl2RenderingContext::TEXTURE_2D,
+                0,
+                format as i32,
+                width as i32,
+                height as i32,
+                0,
+                format,
+                typ,
+                None,
+            )
+            .map_err(|_| Error::UploadTextureFailed);
+
+        if result.is_ok() {
+            gl.framebuffer_texture_2d(
+                WebGl2RenderingContext::FRAMEBUFFER,
+                attachment,
+                WebGl2RenderingContext::TEXTURE_2D,
+                Some(&texture),
+                0,
+            );
+            if attachment == WebGl2RenderingContext::COLOR_ATTACHMENT0 {
+                gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
+            }
+        }
+
+        gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, None);
+
+        if let Err(error) = result {
+            gl.delete_texture(Some(&texture));
+            gl.delete_framebuffer(Some(&buffer));
+            return Err(error);
+        }
+
+        Ok(Self { texture, buffer })
+    }
+
+    pub fn drop(&self, gl: &WebGl2RenderingContext) {
+        gl.delete_framebuffer(Some(&self.buffer));
+        gl.delete_texture(Some(&self.texture));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn smooth_step_clamps_and_interpolates() {
+        assert_eq!(Texture::smooth_step(1., 2., 0.), 0.);
+        assert_eq!(Texture::smooth_step(1., 2., 1.5), 0.5);
+        assert_eq!(Texture::smooth_step(1., 2., 3.), 1.);
     }
 }

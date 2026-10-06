@@ -142,7 +142,7 @@ impl<'s> Span<'s> {
             .render_stats
             .borrow_mut()
             .draw(WebGl2RenderingContext::TRIANGLES, vertices.len(), 1);
-        let result = global.shader.apply(gl, ShaderType::UI, &state);
+        let result = global.builtin_shader.apply(gl, ShaderType::UI, &state);
         if result.is_ok() {
             gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
         }

@@ -68,6 +68,7 @@ impl UniformType {
 #[cfg(test)]
 mod tests {
     use super::{AttributeID, UniformType};
+    use crate::shader::{FOW_RAYCAST_SHADER, PARTICLE_SHADER};
 
     #[test]
     fn displays_glsl_type_names() {
@@ -85,6 +86,28 @@ mod tests {
         assert_eq!(AttributeID::Skin as u32, 3);
         assert_eq!(AttributeID::BoneWeight as u32, 4);
         assert_eq!(AttributeID::Normal as u32, 5);
+    }
+
+    #[test]
+    fn particle_shader_declares_particle_inputs_and_fog() {
+        let vertex = PARTICLE_SHADER.generate_shader_source(true);
+        let fragment = PARTICLE_SHADER.generate_shader_source(false);
+
+        for input in ["a_size", "a_tail", "a_axis"] {
+            assert!(vertex.contains(input));
+        }
+        assert!(fragment.contains("texture(u_fog_of_war, v_texcoord2)"));
+        assert!(fragment.contains("u_alpha_cutoff"));
+    }
+
+    #[test]
+    fn fow_raycast_shader_declares_raycast_inputs() {
+        let vertex = FOW_RAYCAST_SHADER.generate_shader_source(true);
+        let fragment = FOW_RAYCAST_SHADER.generate_shader_source(false);
+
+        assert!(vertex.contains("uniform vec2 u_eye_position"));
+        assert!(vertex.contains("distance(eye.xy, a_position.xy) > 100.0"));
+        assert!(fragment.contains("smoothstep(0.0, 0.2, v_texcoord.y)"));
     }
 }
 
@@ -108,7 +131,9 @@ pub enum AttributeID {
     ParticleAxis = 6,
     ParticleSize = 7,
     ParticleTail = 8,
-    Instance = 9,
+    ParticleQuadRight = 9,
+    ParticleQuadUp = 10,
+    Instance = 11,
 }
 
 #[derive(Debug)]

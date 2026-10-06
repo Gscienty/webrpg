@@ -18,6 +18,7 @@ pub enum Error {
     InvalidPcxData,
     InvalidImageData,
     TruncatedPalette,
+    CreateFramebufferFailed,
     CreateTextureFailed,
     UploadTextureFailed,
 }
@@ -43,6 +44,7 @@ impl std::fmt::Display for Error {
             Self::InvalidPcxData => "invalid PCX data",
             Self::InvalidImageData => "invalid image data",
             Self::TruncatedPalette => "truncated texture palette",
+            Self::CreateFramebufferFailed => "failed to create WebGL framebuffer",
             Self::CreateTextureFailed => "failed to create WebGL texture",
             Self::UploadTextureFailed => "failed to upload WebGL texture",
         };

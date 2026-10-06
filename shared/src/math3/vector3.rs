@@ -1,5 +1,6 @@
 use std::ops::{Add, Index, Mul, Neg, Sub};
 
+#[repr(C)]
 #[derive(PartialEq, Clone, Copy, Default, Debug)]
 pub struct Vector3 {
     pub(crate) x: f32,
