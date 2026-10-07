@@ -1,6 +1,7 @@
 use std::{
     io::{self, Read},
     mem::size_of,
+    sync,
 };
 
 use crate::mdx::{Node, Tracks, utils::read_value};
@@ -33,7 +34,7 @@ struct LightData {
 
 #[derive(Debug)]
 pub struct Light {
-    pub node: Node,
+    pub node: sync::Arc<Node>,
     pub type_: LightType,
     pub attenuation_start: f32,
     pub attenuation_end: f32,

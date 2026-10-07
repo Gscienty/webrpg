@@ -1,6 +1,7 @@
 use std::{
     io::{self, Read},
     mem::size_of,
+    sync,
 };
 
 use crate::mdx::{Model, Node, Tracks, utils::read_value};
@@ -54,7 +55,7 @@ struct ParticleEmitter2Data {
 
 #[derive(Debug)]
 pub struct ParticleEmitter2 {
-    pub node: Node,
+    pub node: sync::Arc<Node>,
     pub speed: f32,
     pub variation: f32,
     pub latitude: f32,

@@ -1,4 +1,7 @@
-use std::io::{self, Cursor, Read};
+use std::{
+    io::{self, Cursor, Read},
+    sync,
+};
 
 use crate::mdx::{
     Node,
@@ -9,7 +12,7 @@ const KEVT: u32 = u32::from_le_bytes(*b"KEVT");
 
 #[derive(Debug)]
 pub struct Event {
-    pub node: Node,
+    pub node: sync::Arc<Node>,
     pub event_track: Option<EventTrack>,
 }
 

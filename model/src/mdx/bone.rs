@@ -1,10 +1,13 @@
-use std::io::{self, Read};
+use std::{
+    io::{self, Read},
+    sync,
+};
 
 use crate::mdx::{Node, utils::read_value};
 
 #[derive(Debug)]
 pub struct Bone {
-    pub node: Node,
+    pub node: sync::Arc<Node>,
     pub geoset_id: u32,
     pub geoset_animation_id: u32,
 }

@@ -1,6 +1,7 @@
 use std::{
     io::{self, Read},
     mem::size_of,
+    sync,
 };
 
 use crate::mdx::{Node, Tracks, utils::read_value};
@@ -29,7 +30,7 @@ struct RibbonEmitterData {
 
 #[derive(Debug)]
 pub struct RibbonEmitter {
-    pub node: Node,
+    pub node: sync::Arc<Node>,
     pub height_above: f32,
     pub height_below: f32,
     pub alpha: f32,

@@ -1,6 +1,7 @@
 use std::{
     io::{self, Read},
     mem::size_of,
+    sync,
 };
 
 use crate::mdx::{Tracks, utils::read_value};
@@ -28,7 +29,7 @@ struct GeosetAnimationData {
 }
 
 impl GeosetAnimation {
-    pub fn read(reader: &mut impl Read) -> io::Result<Self> {
+    pub fn read(reader: &mut impl Read) -> io::Result<sync::Arc<Self>> {
         let size: u32 = read_value(reader)?;
         let payload_size = (size as usize)
             .checked_sub(size_of::<u32>())
@@ -66,10 +67,10 @@ impl GeosetAnimation {
             }
         }
 
-        Ok(result)
+        Ok(sync::Arc::new(result))
     }
 
-    pub fn read_list(reader: &mut impl Read, size: usize) -> io::Result<Vec<Self>> {
+    pub fn read_list(reader: &mut impl Read, size: usize) -> io::Result<Vec<sync::Arc<Self>>> {
         let mut payload = reader.take(size as u64);
         let mut values = Vec::new();
         while payload.limit() > 0 {

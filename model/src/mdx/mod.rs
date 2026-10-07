@@ -1,6 +1,8 @@
 use std::{
+    collections::BTreeMap,
     io::{self, Read},
     mem::size_of,
+    sync,
 };
 
 use utils::{read_value, read_values};
@@ -78,9 +80,9 @@ pub enum ModelChunk {
     CollisionShapes(Vec<CollisionShape>),
     Events(Vec<Event>),
     Geosets(Vec<Geoset>),
-    GeosetAnimations(Vec<GeosetAnimation>),
+    GeosetAnimations(Vec<sync::Arc<GeosetAnimation>>),
     GlobalSequences(Vec<u32>),
-    Helpers(Vec<Node>),
+    Helpers(Vec<sync::Arc<Node>>),
     Info(Info),
     Lights(Vec<Light>),
     Materials(Vec<Material>),
@@ -169,9 +171,9 @@ pub struct Model {
     pub textures: Vec<Texture>,
     pub texture_animations: Vec<TextureAnimation>,
     pub geosets: Vec<Geoset>,
-    pub geoset_animations: Vec<GeosetAnimation>,
+    pub geoset_animations: Vec<sync::Arc<GeosetAnimation>>,
     pub bones: Vec<Bone>,
-    pub helpers: Vec<Node>,
+    pub helpers: Vec<sync::Arc<Node>>,
     pub attachment: Vec<Attachment>,
     pub pivots: Vec<shared::math3::Vector3>,
     pub emitters: Vec<ParticleEmitter>,
@@ -181,6 +183,9 @@ pub struct Model {
     pub collision_shapes: Vec<CollisionShape>,
     pub lights: Vec<Light>,
     pub cameras: Vec<Camera>,
+
+    pub nodes: BTreeMap<u32, sync::Arc<Node>>,
+    pub bounds: Bounds,
 }
 
 impl Model {
@@ -239,6 +244,56 @@ impl Model {
             }
         }
 
+        for animation in &geoset_animations {
+            let geoset = geosets
+                .get_mut(animation.geoset_id as usize)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "invalid geoset animation geoset id",
+                    )
+                })?;
+            geoset.anim = Some(sync::Arc::clone(animation));
+        }
+
+        let nodes = bones
+            .iter()
+            .map(|value| &value.node)
+            .chain(helpers.iter())
+            .chain(attachment.iter().map(|value| &value.node))
+            .chain(emitters.iter().map(|value| &value.node))
+            .chain(emitters2.iter().map(|value| &value.node))
+            .chain(ribbons.iter().map(|value| &value.node))
+            .chain(events.iter().map(|value| &value.node))
+            .chain(collision_shapes.iter().map(|value| &value.node))
+            .chain(lights.iter().map(|value| &value.node))
+            .map(|node| (node.object_id, sync::Arc::clone(node)))
+            .collect();
+
+        let mut min = [0_f32; 3];
+        let mut max = [0_f32; 3];
+        for vertex in geosets.iter().flat_map(|geoset| &geoset.vertices) {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(vertex[axis]);
+                max[axis] = max[axis].max(vertex[axis]);
+            }
+        }
+        let bounds = Bounds {
+            radius: (0..3).map(|axis| max[axis] - min[axis]).fold(0., f32::max),
+            box_: (
+                (min[0], min[1], min[2]).into(),
+                (max[0], max[1], max[2]).into(),
+            )
+                .into(),
+        };
+
+        // TODO: load texture
+        for texture in textures.iter() {
+            if texture.path.is_empty() {
+                continue;
+            }
+        }
+
         Ok(Self {
             version: version.ok_or_else(|| {
                 io::Error::new(io::ErrorKind::InvalidData, "mission model version")
@@ -263,6 +318,8 @@ impl Model {
             collision_shapes,
             lights,
             cameras,
+            nodes,
+            bounds,
         })
     }
 
@@ -325,11 +382,53 @@ mod tests {
     #[test]
     fn reads_model() {
         let mut bytes = b"MDLX".to_vec();
+        bytes.extend(b"VERS");
+        bytes.extend(4_u32.to_le_bytes());
         bytes.extend(800_u32.to_le_bytes());
-        bytes.extend(b"TestModel\0");
         bytes.extend(b"MODL");
         bytes.extend(372_u32.to_le_bytes());
         bytes.extend([0; 372]);
+        bytes.extend(b"GEOA");
+        bytes.extend(28_u32.to_le_bytes());
+        bytes.extend(28_u32.to_le_bytes());
+        bytes.extend(0.5_f32.to_le_bytes());
+        bytes.extend(1_u32.to_le_bytes());
+        for value in [1_f32, 2., 3.] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(b"GEOS");
+        bytes.extend(160_u32.to_le_bytes());
+        bytes.extend(160_u32.to_le_bytes());
+        for tag in [b"PTYP", b"GNDX", b"NRMS", b"PVTX", b"MTGC", b"PCNT"] {
+            bytes.extend(tag);
+            bytes.extend(0_u32.to_le_bytes());
+        }
+        bytes.extend(b"VRTX");
+        bytes.extend(2_u32.to_le_bytes());
+        for value in [-2_f32, 1., 3., 4., -5., 2.] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(b"UVAS");
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(b"UVBS");
+        bytes.extend(1_u32.to_le_bytes());
+        bytes.extend(0.25_f32.to_le_bytes());
+        bytes.extend(0.75_f32.to_le_bytes());
+        bytes.extend(b"MATS");
+        bytes.extend(0_u32.to_le_bytes());
+        for value in [1_u32, 2, 3] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend([0; 28]);
+        bytes.extend(0_u32.to_le_bytes());
+        bytes.extend(b"HELP");
+        bytes.extend(96_u32.to_le_bytes());
+        bytes.extend(96_u32.to_le_bytes());
+        bytes.extend([0; 80]);
+        for value in [7_u32, u32::MAX, 0] {
+            bytes.extend(value.to_le_bytes());
+        }
         bytes.extend(b"GLBS");
         bytes.extend(8_u32.to_le_bytes());
         bytes.extend(100_u32.to_le_bytes());
@@ -340,5 +439,13 @@ mod tests {
         assert_eq!(model.version, 800);
         assert_eq!(model.global_sequences, [100, 200]);
         assert!(model.sequences.is_empty());
+        assert!(sync::Arc::ptr_eq(&model.helpers[0], &model.nodes[&7]));
+        assert!(sync::Arc::ptr_eq(
+            model.geosets[0].anim.as_ref().unwrap(),
+            &model.geoset_animations[0]
+        ));
+        assert_eq!(model.bounds.box_.min, (-2., -5., 0.).into());
+        assert_eq!(model.bounds.box_.max, (4., 1., 3.).into());
+        assert_eq!(model.bounds.radius, 6.);
     }
 }

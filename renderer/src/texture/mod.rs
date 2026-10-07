@@ -165,6 +165,24 @@ impl Texture {
         gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.texture));
     }
 
+    pub fn set_texture_wrap(&self, gl: &WebGl2RenderingContext, wrap_s: bool, wrap_t: bool) {
+        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.texture));
+        for (parameter, repeat) in [
+            (WebGl2RenderingContext::TEXTURE_WRAP_S, wrap_s),
+            (WebGl2RenderingContext::TEXTURE_WRAP_T, wrap_t),
+        ] {
+            gl.tex_parameteri(
+                WebGl2RenderingContext::TEXTURE_2D,
+                parameter,
+                if repeat {
+                    WebGl2RenderingContext::REPEAT
+                } else {
+                    WebGl2RenderingContext::CLAMP_TO_EDGE
+                } as i32,
+            );
+        }
+    }
+
     fn allocate(gl: &WebGl2RenderingContext, width: u32, height: u32) -> Result<Self, Error> {
         let texture = gl.create_texture().ok_or(Error::CreateTextureFailed)?;
         gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&texture));

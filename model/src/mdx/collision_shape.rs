@@ -1,4 +1,7 @@
-use std::io::{self, Read};
+use std::{
+    io::{self, Read},
+    sync,
+};
 
 use crate::mdx::{
     Node,
@@ -15,7 +18,7 @@ pub enum CollisionShapeType {
 
 #[derive(Debug)]
 pub struct CollisionShape {
-    pub node: Node,
+    pub node: sync::Arc<Node>,
     pub type_: CollisionShapeType,
     pub vertices: Vec<shared::math3::Vector3>,
     pub radius: Option<f32>,

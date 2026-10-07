@@ -31,7 +31,7 @@ struct ParticleEmitterData {
 
 #[derive(Debug)]
 pub struct ParticleEmitter {
-    pub node: Node,
+    pub node: sync::Arc<Node>,
     pub emission_rate: f32,
     pub gravity: f32,
     pub logitude: f32,

@@ -13,7 +13,7 @@ const KATV: u32 = u32::from_le_bytes(*b"KATV");
 
 #[derive(Debug)]
 pub struct Attachment {
-    pub node: Node,
+    pub node: sync::Arc<Node>,
     pub path: sync::Arc<str>,
     pub attachment_id: u32,
     pub visibility: Option<Tracks<f32>>,

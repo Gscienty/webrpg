@@ -1,10 +1,11 @@
 use std::{
     io::{self, Read},
     mem::size_of,
+    sync,
 };
 
 use crate::mdx::{
-    Bounds,
+    Bounds, GeosetAnimation,
     utils::{read_list, read_value},
 };
 
@@ -36,6 +37,8 @@ pub struct Geoset {
     pub selectable: u32,
     pub default_bounds: Bounds,
     pub bounds: Vec<Bounds>,
+
+    pub anim: Option<sync::Arc<GeosetAnimation>>,
 }
 
 fn expect_tag(reader: &mut impl Read, expected: u32) -> io::Result<()> {
@@ -125,6 +128,8 @@ impl Geoset {
             selectable,
             default_bounds,
             bounds,
+
+            anim: None,
         })
     }
 
