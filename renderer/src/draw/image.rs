@@ -1,14 +1,5 @@
+use crate::{Error, buffer::Vertices, context::Context, shader::ShaderType, texture::Texture};
 use shared::BlendMode;
-use web_sys::WebGl2RenderingContext;
-
-use crate::{
-    Error,
-    buffer::{RenderBuffer, Vertices},
-    draw::draw_image,
-    global::Global,
-    shader::ShaderType,
-    texture::Texture,
-};
 
 pub struct DrawImage<'s> {
     pub texture: &'s Texture,
@@ -44,12 +35,7 @@ impl<'s> DrawImage<'s> {
         }
     }
 
-    pub fn draw(
-        &self,
-        global: &Global,
-        gl: &WebGl2RenderingContext,
-        buffer: &RenderBuffer,
-    ) -> Result<(), Error> {
+    pub fn draw(&self, context: &Context) -> Result<(), Error> {
         let mut vertices = Vertices::default();
         vertices.add_quad(&self.screen, &self.uv, self.color, 0.);
 
@@ -61,10 +47,7 @@ impl<'s> DrawImage<'s> {
             );
         }
 
-        draw_image(
-            global,
-            gl,
-            buffer,
+        context.draw_image(
             self.texture,
             self.shader_type,
             self.alpha_mode,

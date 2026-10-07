@@ -1,13 +1,12 @@
 use fontdue::{Font, FontSettings};
-use renderer::{draw::Span, global::Global};
+use renderer::{context::Context, draw::Span};
 use shared::color::Color32;
 use wasm_bindgen::{JsCast, JsValue, prelude::wasm_bindgen};
 use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as Gl};
 
 #[wasm_bindgen]
 pub struct TextRenderer {
-    gl: Gl,
-    global: Global,
+    context: Context,
     font: Font,
 }
 
@@ -21,11 +20,13 @@ impl TextRenderer {
             .dyn_into::<Gl>()?;
         let font = Font::from_bytes(font_data, FontSettings::default())
             .map_err(|error| JsValue::from_str(&format!("invalid font: {error}")))?;
-        let global = Global::init(&gl, canvas.width(), canvas.height()).map_err(js_error)?;
+        let width = canvas.width();
+        let height = canvas.height();
+        let context = Context::init(gl, width, height, width, height, None).map_err(js_error)?;
 
-        gl.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
+        context.gl.viewport(0, 0, width as i32, height as i32);
 
-        Ok(Self { gl, global, font })
+        Ok(Self { context, font })
     }
 
     pub fn render(
@@ -36,8 +37,8 @@ impl TextRenderer {
         green: u8,
         blue: u8,
     ) -> Result<(), JsValue> {
-        self.gl.clear_color(0.08, 0.09, 0.11, 1.);
-        self.gl.clear(Gl::COLOR_BUFFER_BIT);
+        self.context.gl.clear_color(0.08, 0.09, 0.11, 1.);
+        self.context.gl.clear(Gl::COLOR_BUFFER_BIT);
 
         let mut span = Span::new(&self.font);
         span.set_size(size);
@@ -48,8 +49,7 @@ impl TextRenderer {
             alpha: 255,
         });
         span.write(text);
-        span.draw(&self.global, &self.gl, 24., 24.)
-            .map_err(js_error)
+        span.draw(&self.context, 24., 24.).map_err(js_error)
     }
 }
 

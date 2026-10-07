@@ -1,9 +1,9 @@
 pub mod backdrop;
 pub mod buffer;
 pub mod camera_height;
+pub mod context;
 pub mod draw;
 mod error;
-pub mod global;
 pub mod particles;
 pub mod render_stats;
 pub mod shader;

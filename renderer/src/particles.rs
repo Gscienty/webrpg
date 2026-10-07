@@ -1,7 +1,7 @@
 use std::sync;
 
 use shared::BlendMode;
-use web_sys::{WebGl2RenderingContext, WebGlUniformLocation};
+use web_sys::WebGl2RenderingContext;
 
 use crate::{
     Error,

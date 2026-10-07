@@ -265,6 +265,12 @@ impl Model {
             cameras,
         })
     }
+
+    pub fn find_sequence_at_time(&self, time: u32) -> Option<&Sequence> {
+        self.sequences
+            .iter()
+            .find(|&seq| seq.interval[0] <= time && time < seq.interval[1])
+    }
 }
 
 #[cfg(test)]

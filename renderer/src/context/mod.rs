@@ -1,35 +1,33 @@
+mod buffers;
+mod draw;
+mod particles;
+mod render_phase;
+mod shaders;
+mod textures;
+mod utils;
+
+pub use particles::Particles;
+pub use render_phase::RenderPhase;
+pub use shaders::Shaders;
+pub use textures::Textures;
+
 use std::cell::RefCell;
 
 use web_sys::WebGl2RenderingContext;
 
-use crate::{
-    Error,
-    buffer::{ParticleVertices, RenderBuffer, Vertices},
-    render_stats::RenderStats,
-    shader,
-    texture::{RenderTarget, Texture},
-};
+use crate::{Error, context::buffers::Buffers, render_stats::RenderStats, texture::RenderTarget};
 
-pub enum RenderPhase {
-    Solid,
-    Lights,
-    Alpha,
-}
+pub struct Context {
+    pub gl: WebGl2RenderingContext,
 
-pub struct Global {
     pub render_phase: RenderPhase,
+
+    pub shaders: Shaders,
+    pub textures: Textures,
+    pub buffers: Buffers,
+    pub particles: Particles,
+
     pub msaa_samples: i32,
-
-    pub builtin_shader: shader::BuiltinShader,
-
-    pub ui_buffer: RenderBuffer,
-    pub particle_buffer: RenderBuffer,
-
-    pub white_texture: Texture,
-    pub black_texture: Texture,
-    pub placeholder_texture: Texture,
-    pub blob_shadow_texture: Texture,
-    pub loading_indicator_texture: Texture,
 
     pub depth_map: RenderTarget,
 
@@ -42,55 +40,51 @@ pub struct Global {
     pub render_stats: RefCell<RenderStats>,
 }
 
-impl Global {
+impl Context {
     pub fn init(
-        gl: &WebGl2RenderingContext,
+        gl: WebGl2RenderingContext,
         window_width: u32,
         window_height: u32,
         drawable_width: u32,
         drawable_height: u32,
+        war3_mpq: Option<&mut webrpg_mpq::Archive>,
     ) -> Result<Self, Error> {
         gl.disable(WebGl2RenderingContext::DEPTH_TEST);
         gl.clear_color(0., 0., 0., 1.);
         gl.viewport(0, 0, drawable_width as i32, drawable_height as i32);
 
-        // TODO init
+        let shaders = Shaders::init(&gl)?;
+        let textures = Textures::init(&gl, war3_mpq)?;
+        let buffers = Buffers::init(&gl)?;
+        let particles = Particles::init();
+        let depth_map = RenderTarget::new(
+            &gl,
+            1024,
+            1024,
+            WebGl2RenderingContext::DEPTH_COMPONENT,
+            WebGl2RenderingContext::FLOAT,
+            WebGl2RenderingContext::DEPTH_ATTACHMENT,
+        )?;
 
         Ok(Self {
+            gl,
             render_phase: RenderPhase::Solid,
+            shaders,
+            textures,
+            buffers,
+            particles,
             msaa_samples: 0,
-
-            builtin_shader: shader::BuiltinShader::init(gl)?,
-
-            ui_buffer: Vertices::create_array_object(gl)?,
-            particle_buffer: ParticleVertices::create_array_object(gl)?,
-
-            white_texture: Texture::white(gl)?,
-            black_texture: Texture::black(gl)?,
-            placeholder_texture: Texture::placeholder(gl)?,
-            blob_shadow_texture: Texture::blob_shadow(gl)?,
-            loading_indicator_texture: Texture::loading_indicator(gl)?,
-
-            depth_map: RenderTarget::new(
-                gl,
-                1024,
-                1024,
-                WebGl2RenderingContext::DEPTH_COMPONENT,
-                WebGl2RenderingContext::FLOAT,
-                WebGl2RenderingContext::DEPTH_ATTACHMENT,
-            )?,
-
+            depth_map,
             window_width,
             window_height,
-
             drawable_width,
             drawable_height,
-
             render_stats: RefCell::new(RenderStats::default()),
         })
     }
 
-    pub fn set_alpha_key_state(&self, gl: &WebGl2RenderingContext, enabled: bool) {
+    pub fn set_alpha_key_state(&self, enabled: bool) {
+        let gl = &self.gl;
         if !enabled {
             gl.disable(WebGl2RenderingContext::SAMPLE_ALPHA_TO_COVERAGE);
             return;

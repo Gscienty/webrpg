@@ -4,6 +4,7 @@ use crate::{shader, texture};
 pub enum Error {
     Shader(shader::Error),
     Texture(texture::Error),
+    Mpq(String),
 }
 
 impl From<shader::Error> for Error {
@@ -23,6 +24,7 @@ impl std::fmt::Display for Error {
         match self {
             Self::Shader(error) => error.fmt(formatter),
             Self::Texture(error) => error.fmt(formatter),
+            Self::Mpq(error) => formatter.write_str(error),
         }
     }
 }
@@ -32,6 +34,7 @@ impl std::error::Error for Error {
         match self {
             Self::Shader(error) => Some(error),
             Self::Texture(error) => Some(error),
+            Self::Mpq(_) => None,
         }
     }
 }

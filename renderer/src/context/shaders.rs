@@ -2,27 +2,16 @@ use std::any::Any;
 
 use web_sys::WebGl2RenderingContext;
 
-use crate::shader::{
-    COMMANDBUTTON_SHADER, DEFAULT_SHADER, DefaultState, Error, FOW_RAYCAST_SHADER,
-    MINIMAP_FOG_SHADER, MINIMAP_SHADER, MODEL_INSTANCED_SHADER, MODEL_SHADER, ModelState,
-    PARTICLE_SHADER, Program, SHADOW_SPLAT_SHADER, SPLAT_SHADER, SpriteState, UNLIT_SHADER,
+use crate::{
+    Error,
+    shader::{
+        self, COMMANDBUTTON_SHADER, DEFAULT_SHADER, FOW_RAYCAST_SHADER, MINIMAP_FOG_SHADER,
+        MINIMAP_SHADER, MODEL_INSTANCED_SHADER, MODEL_SHADER, ModelState, PARTICLE_SHADER, Program,
+        SHADOW_SPLAT_SHADER, SPLAT_SHADER, ShaderType, UNLIT_SHADER,
+    },
 };
 
-#[derive(Clone, Copy)]
-pub enum ShaderType {
-    Default,
-    Splat,
-    ShadowSplat,
-    CommandButton,
-    Minimap,
-    MinimapFog,
-    Unlit,
-    Particle,
-    FowRaycast,
-    UI,
-}
-
-pub struct BuiltinShader {
+pub struct Shaders {
     default_shader_prog: Program,
 
     model_instance_prog: Program,
@@ -38,8 +27,8 @@ pub struct BuiltinShader {
     unlit_prog: Program,
 }
 
-impl BuiltinShader {
-    pub fn init(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+impl Shaders {
+    pub(super) fn init(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
         let default_shader_prog = DEFAULT_SHADER.compile_program(gl)?;
 
         let model_instance_prog = MODEL_INSTANCED_SHADER.compile_program(gl)?;
@@ -76,7 +65,7 @@ impl BuiltinShader {
         gl: &WebGl2RenderingContext,
         is_instance: bool,
         state: &ModelState,
-    ) -> Result<(), Error> {
+    ) -> Result<(), shader::Error> {
         if is_instance {
             self.model_instance_prog.apply(gl, state)
         } else {
@@ -89,7 +78,7 @@ impl BuiltinShader {
         gl: &WebGl2RenderingContext,
         typ: ShaderType,
         state: &T,
-    ) -> Result<(), Error>
+    ) -> Result<(), shader::Error>
     where
         T: Any + Sized,
     {

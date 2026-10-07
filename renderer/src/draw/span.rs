@@ -5,7 +5,7 @@ use web_sys::WebGl2RenderingContext;
 use crate::{
     Error,
     buffer::Vertices,
-    global::Global,
+    context::Context,
     shader::{ShaderType, SpriteState},
     texture::Texture,
 };
@@ -42,13 +42,8 @@ impl<'s> Span<'s> {
         );
     }
 
-    pub fn draw(
-        &self,
-        global: &Global,
-        gl: &WebGl2RenderingContext,
-        x: f32,
-        y: f32,
-    ) -> Result<(), Error> {
+    pub fn draw(&self, context: &Context, x: f32, y: f32) -> Result<(), Error> {
+        let gl = &context.gl;
         let glyphs = self.layout.glyphs();
         let glyph_width: usize = glyphs.iter().map(|glyph| glyph.width).sum();
         let glyph_height = glyphs.iter().map(|glyph| glyph.height).max().unwrap_or(0);
@@ -104,10 +99,10 @@ impl<'s> Span<'s> {
 
         let texture = Texture::from_pixels(gl, &pixels, atlas_width as u32, atlas_height as u32)?;
 
-        gl.bind_vertex_array(Some(&global.ui_buffer.vao));
+        gl.bind_vertex_array(Some(&context.buffers.ui.vao));
         gl.bind_buffer(
             WebGl2RenderingContext::ARRAY_BUFFER,
-            Some(&global.ui_buffer.vbo),
+            Some(&context.buffers.ui.vbo),
         );
         gl.buffer_data_with_u8_array(
             WebGl2RenderingContext::ARRAY_BUFFER,
@@ -128,8 +123,8 @@ impl<'s> Span<'s> {
         let state = SpriteState {
             view_projection: shared::math3::Matrix4::ortho(
                 0.,
-                global.drawable_width as f32,
-                global.drawable_height as f32,
+                context.drawable_width as f32,
+                context.drawable_height as f32,
                 0.,
                 0.,
                 100.,
@@ -138,11 +133,12 @@ impl<'s> Span<'s> {
             ..Default::default()
         };
 
-        global
-            .render_stats
-            .borrow_mut()
-            .draw(WebGl2RenderingContext::TRIANGLES, vertices.len(), 1);
-        let result = global.builtin_shader.apply(gl, ShaderType::UI, &state);
+        context.render_stats.borrow_mut().draw(
+            WebGl2RenderingContext::TRIANGLES,
+            vertices.len(),
+            1,
+        );
+        let result = context.shaders.apply(gl, ShaderType::UI, &state);
         if result.is_ok() {
             gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
         }

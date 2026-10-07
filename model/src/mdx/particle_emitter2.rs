@@ -3,7 +3,7 @@ use std::{
     mem::size_of,
 };
 
-use crate::mdx::{Node, Tracks, utils::read_value};
+use crate::mdx::{Model, Node, Tracks, utils::read_value};
 
 const KP2E: u32 = u32::from_le_bytes(*b"KP2E");
 const KP2G: u32 = u32::from_le_bytes(*b"KP2G");
@@ -171,6 +171,59 @@ impl ParticleEmitter2 {
             values.push(Self::read(&mut payload)?);
         }
         Ok(values)
+    }
+
+    pub fn color(&self, seg: usize) -> shared::color::Color32 {
+        self.segment_color[seg].convert_to_color(self.alpha[seg])
+    }
+
+    pub fn get_emission_rate(&self, model: &Model, global_time: u32, frame: u32) -> f32 {
+        self.emission_rate_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.emission_rate)
+    }
+
+    pub fn get_speed(&self, model: &Model, global_time: u32, frame: u32) -> f32 {
+        self.speed_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.speed)
+    }
+
+    pub fn get_variation(&self, model: &Model, global_time: u32, frame: u32) -> f32 {
+        self.variation_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.variation)
+    }
+
+    pub fn get_latitude(&self, model: &Model, global_time: u32, frame: u32) -> f32 {
+        self.latitude_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.latitude)
+    }
+
+    pub fn get_gravity(&self, model: &Model, global_time: u32, frame: u32) -> f32 {
+        self.gravity_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.gravity)
+    }
+
+    pub fn get_width(&self, model: &Model, global_time: u32, frame: u32) -> f32 {
+        self.width_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.width)
+    }
+
+    pub fn get_length(&self, model: &Model, global_time: u32, frame: u32) -> f32 {
+        self.length_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.length)
     }
 }
 

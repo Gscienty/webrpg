@@ -1,11 +1,7 @@
+use crate::{Error, buffer::Vertices, context::Context, shader::ShaderType, texture::Texture};
 use shared::BlendMode;
 use std::collections::BTreeMap;
 use strum::{EnumIter, IntoEnumIterator};
-use web_sys::WebGl2RenderingContext;
-
-use crate::{
-    Error, buffer::Vertices, draw::draw_image, global::Global, shader::ShaderType, texture::Texture,
-};
 
 pub const DRAW_CLIP: u8 = 1 << 0;
 pub const DRAW_WORD_WRAP: u8 = 1 << 1;
@@ -114,7 +110,7 @@ impl DrawBackdrop {
         }
     }
 
-    pub fn draw(&self, global: &Global, gl: &WebGl2RenderingContext) -> Result<(), Error> {
+    pub fn draw(&self, context: &Context) -> Result<(), Error> {
         if self.bg.texture.is_none() && self.edge.texture.is_none() {
             return Ok(());
         }
@@ -126,10 +122,7 @@ impl DrawBackdrop {
             let mut vertices = Vertices::default();
             vertices.add_quad(&background, &uv, self.bg.color, 0.);
 
-            draw_image(
-                global,
-                gl,
-                &global.ui_buffer,
+            context.draw_image(
                 texture,
                 ShaderType::UI,
                 BlendMode::Blend,
@@ -167,10 +160,7 @@ impl DrawBackdrop {
             }
 
             if !vertices.is_empty() {
-                draw_image(
-                    global,
-                    gl,
-                    &global.ui_buffer,
+                context.draw_image(
                     texture,
                     ShaderType::UI,
                     BlendMode::Blend,

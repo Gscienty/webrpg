@@ -1,8 +1,4 @@
-use renderer::{
-    draw::{DrawImage, scene_rect},
-    global::Global,
-    texture::Texture,
-};
+use renderer::{context::Context, draw::DrawImage, texture::Texture};
 use shared::color::Color32;
 use wasm_bindgen::{JsCast, JsValue, prelude::wasm_bindgen};
 use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as Gl};
@@ -38,14 +34,24 @@ fn render_image(canvas: HtmlCanvasElement, filename: &str, data: &[u8]) -> Resul
     }
 
     let texture = Texture::load(&gl, filename, data).map_err(js_error)?;
-    let global = Global::init(&gl, canvas.width(), canvas.height()).map_err(js_error)?;
+    let context = Context::init(
+        gl,
+        canvas.width(),
+        canvas.height(),
+        canvas.width(),
+        canvas.height(),
+        None,
+    )
+    .map_err(js_error)?;
 
-    gl.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
-    gl.clear_color(0.08, 0.09, 0.11, 1.);
-    gl.clear(Gl::COLOR_BUFFER_BIT);
+    context
+        .gl
+        .viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
+    context.gl.clear_color(0.08, 0.09, 0.11, 1.);
+    context.gl.clear(Gl::COLOR_BUFFER_BIT);
 
-    DrawImage::new(&texture, scene_rect(&global), None, Color32::white())
-        .draw(&global, &gl, &global.ui_buffer)
+    DrawImage::new(&texture, context.scene_rect(), None, Color32::white())
+        .draw(&context)
         .map_err(js_error)
 }
 

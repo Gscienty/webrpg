@@ -17,7 +17,7 @@ mod builtin_model_shader_desc;
 mod builtin_particle_shader_desc;
 mod builtin_sprite_shader_desc;
 
-mod global;
+mod shader_type;
 
 pub use desc::{Attribute, AttributeID, Descriptor, PrecisionType, Uniform, UniformType, Varying};
 pub use error::Error;
@@ -41,4 +41,4 @@ pub use builtin_sprite_shader_desc::{
     UNLIT_SHADER,
 };
 
-pub use global::{BuiltinShader, ShaderType};
+pub use shader_type::ShaderType;

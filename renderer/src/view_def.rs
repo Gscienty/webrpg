@@ -1,7 +1,7 @@
 use shared::math3::Line3Intersect;
 
 use crate::{
-    global::Global,
+    context::Context,
     render_entity::{RenderEntity, RenderEntityFlag},
     shader::EnvironLight,
     terrian_mask::TerrainMask,
@@ -54,14 +54,14 @@ pub struct ViewDef {
 }
 
 impl ViewDef {
-    pub fn point_to_view_space(&self, global: &Global, x: f32, y: f32) -> shared::math3::Vector2 {
+    pub fn point_to_view_space(&self, context: &Context, x: f32, y: f32) -> shared::math3::Vector2 {
         let mut viewport = self.viewport;
         if viewport.w <= 0. || viewport.h <= 0. {
             viewport = shared::math3::Rect::new(0., 0., 1., 1.);
         }
 
-        let window_width = global.window_width as f32;
-        let window_height = global.window_height as f32;
+        let window_width = context.window_width as f32;
+        let window_height = context.window_height as f32;
         let left = viewport.x * window_width;
         let top = (1. - viewport.y - viewport.h) * window_height;
         let width = viewport.w * window_width;
@@ -74,9 +74,9 @@ impl ViewDef {
             .into()
     }
 
-    pub fn line_for_screen_point(&self, global: &Global, x: f32, y: f32) -> shared::math3::Line3 {
+    pub fn line_for_screen_point(&self, context: &Context, x: f32, y: f32) -> shared::math3::Line3 {
         let inverse = self.view_projection_matrix.inverse();
-        let point = self.point_to_view_space(global, x, y);
+        let point = self.point_to_view_space(context, x, y);
 
         shared::math3::Line3::from((
             inverse * shared::math3::Vector3::from((point[0], point[1], 0.)),
@@ -86,11 +86,11 @@ impl ViewDef {
 
     pub fn trace_camera_plane(
         &self,
-        global: &Global,
+        context: &Context,
         x: f32,
         y: f32,
     ) -> Option<shared::math3::Vector3> {
-        let line = self.line_for_screen_point(global, x, y);
+        let line = self.line_for_screen_point(context, x, y);
         let plane =
             shared::math3::Plane3::new(shared::math3::Vector3::from((0., 0., 1.)), -self.target[2]);
 
@@ -104,7 +104,7 @@ impl ViewDef {
 
     pub fn entities_in_rect(
         &self,
-        global: &Global,
+        context: &Context,
         rect: shared::math3::Rect,
         max: u32,
     ) -> Vec<u32> {
@@ -112,8 +112,8 @@ impl ViewDef {
             return Vec::new();
         }
 
-        let a = self.point_to_view_space(global, rect.x, rect.y);
-        let b = self.point_to_view_space(global, rect.x + rect.w, rect.y + rect.h);
+        let a = self.point_to_view_space(context, rect.x, rect.y);
+        let b = self.point_to_view_space(context, rect.x + rect.w, rect.y + rect.h);
         let screen = shared::math3::Rect::new(
             a[0].min(b[0]),
             a[1].min(b[1]),

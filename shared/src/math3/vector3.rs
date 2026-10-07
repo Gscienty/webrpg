@@ -1,5 +1,7 @@
 use std::ops::{Add, Index, Mul, Neg, Sub};
 
+use crate::color;
+
 #[repr(C)]
 #[derive(PartialEq, Clone, Copy, Default, Debug)]
 pub struct Vector3 {
@@ -154,5 +156,14 @@ impl Vector3 {
         let factor_4 = t_pow2 * (3. - 2. * t);
 
         a * factor_1 + b * factor_2 + c * factor_3 + d * factor_4
+    }
+
+    pub fn convert_to_color(&self, alpha: u8) -> color::Color32 {
+        color::Color32 {
+            red: (self.x * 255.) as u8,
+            green: (self.y * 255.) as u8,
+            blue: (self.z * 255.) as u8,
+            alpha,
+        }
     }
 }
