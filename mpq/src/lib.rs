@@ -38,14 +38,20 @@ fn normalize_mpq_path(path: &str) -> String {
 }
 
 pub struct Archive {
+    id: String,
     inner: mpq::Archive,
 }
 
 impl Archive {
-    pub fn load(data: Vec<u8>) -> Result<Self, String> {
+    pub fn load(id: impl Into<String>, data: Vec<u8>) -> Result<Self, String> {
         Ok(Self {
+            id: id.into(),
             inner: mpq::Archive::load(data).map_err(|error| error.to_string())?,
         })
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     pub fn read_file(&mut self, path: &str) -> Result<Vec<u8>, String> {
@@ -73,7 +79,7 @@ impl OpfsMpq {
     /// Load and parse a named MPQ from OPFS once.
     pub async fn open(name: &str) -> Result<OpfsMpq, JsValue> {
         let data = load_mpq(name).await?;
-        let archive = Archive::load(data).map_err(js_error)?;
+        let archive = Archive::load(name, data).map_err(js_error)?;
         Ok(Self { archive })
     }
 
@@ -101,7 +107,7 @@ pub async fn store_mpq(name: &str, data: &[u8]) -> Result<(), JsValue> {
 /// Read one file from MPQ bytes. Both slash styles are accepted for `path`.
 #[wasm_bindgen]
 pub fn read_mpq_file(mpq_data: &[u8], path: &str) -> Result<Vec<u8>, JsValue> {
-    let mut archive = Archive::load(mpq_data.to_vec()).map_err(js_error)?;
+    let mut archive = Archive::load("", mpq_data.to_vec()).map_err(js_error)?;
     archive.read_file(path).map_err(js_error)
 }
 

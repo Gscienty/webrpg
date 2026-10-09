@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync};
 
 use web_sys::WebGl2RenderingContext;
 
@@ -31,7 +31,9 @@ pub struct Textures {
     pub water: Option<Texture>,
     pub selection_circles: Vec<Texture>,
 
-    pub textures: BTreeMap<u32, Texture>,
+    pub textures: BTreeMap<usize, Texture>,
+    texture_ids: BTreeMap<(String, String), usize>,
+    pub texture_id_generator: sync::atomic::AtomicUsize,
 }
 
 impl Textures {
@@ -49,7 +51,10 @@ impl Textures {
             team_color: Vec::new(),
             water: None,
             selection_circles: Vec::new(),
+
             textures: BTreeMap::new(),
+            texture_ids: BTreeMap::new(),
+            texture_id_generator: sync::atomic::AtomicUsize::new(0),
         };
 
         let Some(war3_mpq) = war3_mpq else {
@@ -85,9 +90,30 @@ impl Textures {
         Ok(textures)
     }
 
+    pub fn load_texture(
+        &mut self,
+        gl: &WebGl2RenderingContext,
+        mpq: &mut webrpg_mpq::Archive,
+        path: &str,
+    ) -> Result<usize, Error> {
+        let key = (mpq.id().to_owned(), path.to_owned());
+        if let Some(texture_id) = self.texture_ids.get(&key) {
+            return Ok(*texture_id);
+        }
+
+        let data = mpq.read_file(path).map_err(Error::Mpq)?;
+        let texture = Texture::load(gl, path, &data)?;
+        let texture_id = self
+            .texture_id_generator
+            .fetch_add(1, sync::atomic::Ordering::Relaxed);
+        self.textures.insert(texture_id, texture);
+        self.texture_ids.insert(key, texture_id);
+        Ok(texture_id)
+    }
+
     pub fn get_texture<'s>(
         &'s self,
-        texture_id: u32,
+        texture_id: usize,
         team_id: u32,
         replaceable_id: u32,
         override_texture: Option<&'s Texture>,

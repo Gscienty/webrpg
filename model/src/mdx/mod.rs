@@ -189,6 +189,29 @@ pub struct Model {
 }
 
 impl Model {
+    pub fn parse(
+        reader: &mut impl Read,
+        context: &mut renderer::context::Context,
+        mpq: Option<&mut webrpg_mpq::Archive>,
+    ) -> io::Result<Self> {
+        let mut model = Self::read(reader)?;
+        let Some(mpq) = mpq else {
+            return Ok(model);
+        };
+
+        for texture in &mut model.textures {
+            if !texture.path.is_empty() {
+                texture.texture_id = Some(
+                    context
+                        .textures
+                        .load_texture(&context.gl, mpq, &texture.path)
+                        .map_err(io::Error::other)?,
+                );
+            }
+        }
+        Ok(model)
+    }
+
     pub fn read(reader: &mut impl Read) -> io::Result<Self> {
         let tag: u32 = read_value(reader)?;
         if tag != MDLX {
@@ -287,13 +310,6 @@ impl Model {
                 .into(),
         };
 
-        // TODO: load texture
-        for texture in textures.iter() {
-            if texture.path.is_empty() {
-                continue;
-            }
-        }
-
         Ok(Self {
             version: version.ok_or_else(|| {
                 io::Error::new(io::ErrorKind::InvalidData, "mission model version")
@@ -327,6 +343,37 @@ impl Model {
         self.sequences
             .iter()
             .find(|&seq| seq.interval[0] <= time && time < seq.interval[1])
+    }
+
+    pub fn build_buffers(
+        gl: &web_sys::WebGl2RenderingContext,
+        geosets: &mut [Geoset],
+    ) -> Result<renderer::buffer::RenderBuffer, renderer::shader::Error> {
+        let (vertices, indices) = Self::pack_geometry(geosets);
+        let buffer = vertices.new_indexed_array_object(gl, &indices)?;
+        let ibo = buffer.ibo.as_ref().unwrap();
+        let mut base = 0;
+        for geoset in geosets {
+            geoset.buffer = Some(renderer::buffer::Vertices::create_shared_array_object(
+                gl,
+                &buffer.vbo,
+                ibo,
+                base,
+            )?);
+            base += geoset.vertices.len();
+        }
+        Ok(buffer)
+    }
+
+    fn pack_geometry(geosets: &[Geoset]) -> (renderer::buffer::Vertices, Vec<u32>) {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        for geoset in geosets {
+            let (geoset_vertices, geoset_indices) = geoset.pack_geometry();
+            vertices.extend(geoset_vertices);
+            indices.extend(geoset_indices);
+        }
+        (vertices.into(), indices)
     }
 }
 

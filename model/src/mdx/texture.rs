@@ -11,6 +11,8 @@ pub struct Texture {
     pub replaceable_id: u32,
     pub path: sync::Arc<str>,
     pub flags: u32,
+
+    pub texture_id: Option<usize>,
 }
 
 #[repr(C)]
@@ -29,6 +31,8 @@ impl Texture {
             replaceable_id: data.replaceable_id,
             path: fixed_string_bytes(&data.path),
             flags: data.flags,
+
+            texture_id: None,
         })
     }
 
