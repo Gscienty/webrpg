@@ -2,10 +2,60 @@ use shared::math3::Line3Intersect;
 
 use crate::{
     context::Context,
+    model,
     render_entity::{RenderEntity, RenderEntityFlag},
     shader::EnvironLight,
     terrian_mask::TerrainMask,
 };
+
+#[repr(u32)]
+pub enum ViewRDFlag {
+    NoFog = 0x01,
+    NoFogMask = 0x02,
+    NoWorldModel = 0x04,
+    NoFrustumCull = 0x08,
+    NoParticles = 0x10,
+    UseEntityCamera = 0x20,
+    IsolatedParticles = 0x40,
+    UISprite = 0x80,
+}
+
+#[repr(u32)]
+pub enum ViewFlag {
+    Selected = 1 << 0,
+    HasLumber = 1 << 1,
+    HasGold = 1 << 2,
+    Hidden = 1 << 3,
+    NoUbersplat = 1 << 4,
+    NoFogOfWar = 1 << 5,
+    NoShadow = 1 << 6,
+    AttachOverhead = 1 << 7,
+    NoLighting = 1 << 8,
+    GroundAnchor = 1 << 9,
+    FowBlocker = 1 << 10,
+    PortraitLighting = 1 << 11,
+    FowRevealer = 1 << 12,
+    Hostile = 1 << 13,
+    Hovered = 1 << 14,
+    OrthoCamera = 1 << 15,
+    Mounted = 1 << 16,
+    HasQuest = 1 << 17,
+    QuestComplete = 1 << 18,
+    NotSelectable = 1 << 19,
+    Neutral = 1 << 20,
+    Building = 1 << 21,
+    GroundConform = 1 << 22,
+    GroundSurface = 1 << 23,
+    Unit = 1 << 24,
+    Allied = 1 << 25,
+    SelectionCircleOnWater = 1 << 26,
+    GroundSurfaceSupport = 1 << 27,
+}
+
+#[allow(non_upper_case_globals)]
+impl ViewFlag {
+    pub const GroundEffect: Self = Self::OrthoCamera;
+}
 
 #[derive(Default, Clone, Copy)]
 pub struct ViewCamera {
@@ -18,7 +68,34 @@ pub struct ViewCamera {
     pub zfar: f32,
 }
 
-pub struct ViewDef {
+#[derive(Default)]
+pub struct RenderSplatRect {
+    pub mins: shared::math3::Vector2,
+    pub maxs: shared::math3::Vector2,
+    pub color: shared::color::Color32,
+}
+
+#[derive(Default)]
+pub struct WeatherEffect {
+    pub handle: u32,
+    pub effect_id: u32,
+    pub bounds: shared::math3::Box2,
+    pub enabled: u32,
+}
+
+#[derive(Default)]
+pub struct LightningEffects {
+    pub handle: u32,
+    pub effect_id: u32,
+    pub source: shared::math3::Vector3,
+    pub target: shared::math3::Vector3,
+    pub color: shared::color::Color32,
+    pub start_time: u32,
+    pub end_time: u32,
+}
+
+#[derive(Default)]
+pub struct View<'s> {
     pub camera_state: [ViewCamera; 2],
     pub target: shared::math3::Vector3,
     pub viewport: shared::math3::Rect,
@@ -26,15 +103,17 @@ pub struct ViewDef {
     pub time: u32,
     pub delta_time: u32,
     pub lerpfrac: f32,
-    pub entities: Vec<RenderEntity>,
-    // TODO: decials
-    // TODO: splat_rects
-    // TODO: weather_effects
-    // TODO: lightning_effects
+    pub entities: Vec<RenderEntity<'s>>,
+    pub decals: Vec<u32>,
+    pub splat_rects: Vec<RenderSplatRect>,
+    pub weather_effects: Vec<WeatherEffect>,
+    pub lightning_effects: Vec<LightningEffects>,
     pub view_projection_matrix: shared::math3::Matrix4,
     pub light_matrix: shared::math3::Matrix4,
     pub texture_matrix: shared::math3::Matrix4,
-    // TODO: model: terrian light / entity light / sky model
+    pub terrain_light_model: Option<&'s model::mdx::Model>,
+    pub entity_light_model: Option<&'s model::mdx::Model>,
+    pub sky_model: Option<&'s model::mdx::Model>,
     pub environment_phase: f32,
     pub terrain_light: EnvironLight,
     pub entity_light: EnvironLight,
@@ -53,7 +132,9 @@ pub struct ViewDef {
     pub fog_color: shared::math3::Vector3,
 }
 
-impl ViewDef {
+impl View<'_> {
+    pub fn render(&self, context: &Context) {}
+
     pub fn point_to_view_space(&self, context: &Context, x: f32, y: f32) -> shared::math3::Vector2 {
         let mut viewport = self.viewport;
         if viewport.w <= 0. || viewport.h <= 0. {
@@ -97,11 +178,6 @@ impl ViewDef {
         line.intersect(plane)
     }
 
-    pub fn trace_entity(&self, x: f32, y: f32) -> Option<u32> {
-        // TODO
-        None
-    }
-
     pub fn entities_in_rect(
         &self,
         context: &Context,
@@ -136,7 +212,7 @@ impl ViewDef {
             .collect()
     }
 
-    pub fn collect_revealers(&self, max_revealers: usize) -> Vec<&RenderEntity> {
+    pub fn collect_revealers(&self, max_revealers: usize) -> Vec<&RenderEntity<'_>> {
         self.entities
             .iter()
             .filter(|entity| {

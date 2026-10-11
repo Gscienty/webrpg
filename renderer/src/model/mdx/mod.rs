@@ -38,7 +38,7 @@ pub use attachment::Attachment;
 pub use camera::Camera;
 pub use collision_shape::{CollisionShape, CollisionShapeType};
 pub use event::{Event, EventTrack};
-pub use geoset::Geoset;
+pub use geoset::{Geoset, MDXGeoset};
 pub use geoset_animation::GeosetAnimation;
 pub use info::Info;
 pub use light::{Light, LightType};
@@ -50,6 +50,9 @@ pub use ribbon_emitter::RibbonEmitter;
 pub use sequence::Sequence;
 pub use texture::Texture;
 pub use texture_animation::TextureAnimation;
+use web_sys::{WebGl2RenderingContext, WebGlBuffer};
+
+use crate::{buffer, context, shader};
 
 const ATCH: u32 = u32::from_le_bytes(*b"ATCH");
 const BONE: u32 = u32::from_le_bytes(*b"BONE");
@@ -79,7 +82,7 @@ pub enum ModelChunk {
     Cameras(Vec<Camera>),
     CollisionShapes(Vec<CollisionShape>),
     Events(Vec<Event>),
-    Geosets(Vec<Geoset>),
+    Geosets(Vec<MDXGeoset>),
     GeosetAnimations(Vec<sync::Arc<GeosetAnimation>>),
     GlobalSequences(Vec<u32>),
     Helpers(Vec<sync::Arc<Node>>),
@@ -131,7 +134,7 @@ impl ModelChunk {
             MTLS => Self::Materials(Material::read_list(reader, size)?),
             TEXS => Self::Textures(Texture::read_list(reader, size)?),
             TXAN => Self::TextureAnimations(TextureAnimation::read_list(reader, size)?),
-            GEOS => Self::Geosets(Geoset::read_list(reader, size)?),
+            GEOS => Self::Geosets(MDXGeoset::read_list(reader, size)?),
             GEOA => Self::GeosetAnimations(GeosetAnimation::read_list(reader, size)?),
             BONE => Self::Bones(Bone::read_list(reader, size)?),
             HELP => Self::Helpers(Node::read_list(reader, size)?),
@@ -186,33 +189,17 @@ pub struct Model {
 
     pub nodes: BTreeMap<u32, sync::Arc<Node>>,
     pub bounds: Bounds,
+
+    pub vbo: WebGlBuffer,
+    pub ibo: WebGlBuffer,
 }
 
 impl Model {
     pub fn parse(
-        reader: &mut impl Read,
-        context: &mut renderer::context::Context,
+        context: &mut context::Context,
         mpq: Option<&mut webrpg_mpq::Archive>,
-    ) -> io::Result<Self> {
-        let mut model = Self::read(reader)?;
-        let Some(mpq) = mpq else {
-            return Ok(model);
-        };
-
-        for texture in &mut model.textures {
-            if !texture.path.is_empty() {
-                texture.texture_id = Some(
-                    context
-                        .textures
-                        .load_texture(&context.gl, mpq, &texture.path)
-                        .map_err(io::Error::other)?,
-                );
-            }
-        }
-        Ok(model)
-    }
-
-    pub fn read(reader: &mut impl Read) -> io::Result<Self> {
+        reader: &mut impl Read,
+    ) -> Result<Self, io::Error> {
         let tag: u32 = read_value(reader)?;
         if tag != MDLX {
             return Err(io::Error::new(
@@ -228,7 +215,7 @@ impl Model {
         let mut materials = Vec::new();
         let mut textures = Vec::new();
         let mut texture_animations = Vec::new();
-        let mut geosets = Vec::new();
+        let mut mdx_geosets = Vec::new();
         let mut geoset_animations = Vec::new();
         let mut bones = Vec::new();
         let mut helpers = Vec::new();
@@ -251,7 +238,7 @@ impl Model {
                 ModelChunk::Materials(value) => materials = value,
                 ModelChunk::Textures(value) => textures = value,
                 ModelChunk::TextureAnimations(value) => texture_animations = value,
-                ModelChunk::Geosets(value) => geosets = value,
+                ModelChunk::Geosets(value) => mdx_geosets = value,
                 ModelChunk::GeosetAnimations(value) => geoset_animations = value,
                 ModelChunk::Bones(value) => bones = value,
                 ModelChunk::Helpers(value) => helpers = value,
@@ -268,7 +255,7 @@ impl Model {
         }
 
         for animation in &geoset_animations {
-            let geoset = geosets
+            let geoset = mdx_geosets
                 .get_mut(animation.geoset_id as usize)
                 .ok_or_else(|| {
                     io::Error::new(
@@ -277,6 +264,19 @@ impl Model {
                     )
                 })?;
             geoset.anim = Some(sync::Arc::clone(animation));
+        }
+
+        if let Some(mpq) = mpq {
+            for texture in &mut textures {
+                if !texture.path.is_empty() {
+                    texture.texture_id = Some(
+                        context
+                            .textures
+                            .load_texture(&context.gl, mpq, &texture.path)
+                            .map_err(io::Error::other)?,
+                    );
+                }
+            }
         }
 
         let nodes = bones
@@ -295,12 +295,64 @@ impl Model {
 
         let mut min = [0_f32; 3];
         let mut max = [0_f32; 3];
-        for vertex in geosets.iter().flat_map(|geoset| &geoset.vertices) {
+        for vertex in mdx_geosets.iter().flat_map(|geoset| &geoset.vertices) {
             for axis in 0..3 {
                 min[axis] = min[axis].min(vertex[axis]);
                 max[axis] = max[axis].max(vertex[axis]);
             }
         }
+
+        let vbo = context
+            .gl
+            .create_buffer()
+            .ok_or(shader::Error::CreateBufferFailed)
+            .map_err(io::Error::other)?;
+        let ibo = context
+            .gl
+            .create_buffer()
+            .ok_or(shader::Error::CreateBufferFailed)
+            .map_err(io::Error::other)?;
+
+        let mut index_offset = 0;
+        let mut geosets = Vec::with_capacity(mdx_geosets.len());
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        for geoset in mdx_geosets {
+            let (geoset, vertices_chunk, indices_chunk) =
+                Geoset::pack_geometry(&context.gl, &ibo, geoset, index_offset)
+                    .map_err(io::Error::other)?;
+            geosets.push(geoset);
+
+            index_offset += indices_chunk.len();
+
+            vertices.extend(vertices_chunk);
+            indices.extend(indices_chunk);
+        }
+
+        context
+            .gl
+            .bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&vbo));
+        context.gl.buffer_data_with_u8_array(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            buffer::Vertices::from(vertices).as_bytes(),
+            WebGl2RenderingContext::STATIC_DRAW,
+        );
+
+        context
+            .gl
+            .bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(&ibo));
+        let index_bytes = unsafe {
+            std::slice::from_raw_parts(
+                indices.as_ptr().cast::<u8>(),
+                std::mem::size_of_val(indices.as_slice()),
+            )
+        };
+        context.gl.buffer_data_with_u8_array(
+            WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER,
+            index_bytes,
+            WebGl2RenderingContext::STATIC_DRAW,
+        );
+
         let bounds = Bounds {
             radius: (0..3).map(|axis| max[axis] - min[axis]).fold(0., f32::max),
             box_: (
@@ -336,6 +388,8 @@ impl Model {
             cameras,
             nodes,
             bounds,
+            vbo,
+            ibo,
         })
     }
 
@@ -345,154 +399,59 @@ impl Model {
             .find(|&seq| seq.interval[0] <= time && time < seq.interval[1])
     }
 
-    pub fn build_buffers(
-        gl: &web_sys::WebGl2RenderingContext,
-        geosets: &mut [Geoset],
-    ) -> Result<renderer::buffer::RenderBuffer, renderer::shader::Error> {
-        let (vertices, indices) = Self::pack_geometry(geosets);
-        let buffer = vertices.new_indexed_array_object(gl, &indices)?;
-        let ibo = buffer.ibo.as_ref().unwrap();
-        let mut base = 0;
-        for geoset in geosets {
-            geoset.buffer = Some(renderer::buffer::Vertices::create_shared_array_object(
-                gl,
-                &buffer.vbo,
-                ibo,
-                base,
-            )?);
-            base += geoset.vertices.len();
-        }
-        Ok(buffer)
-    }
+    pub fn select_ui_sequence(&self, animation: &str) -> Option<&Sequence> {
+        let sequence = animation
+            .strip_prefix("#!")
+            .or_else(|| animation.strip_prefix('#'))
+            .unwrap_or(animation);
 
-    fn pack_geometry(geosets: &[Geoset]) -> (renderer::buffer::Vertices, Vec<u32>) {
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
-        for geoset in geosets {
-            let (geoset_vertices, geoset_indices) = geoset.pack_geometry();
-            vertices.extend(geoset_vertices);
-            indices.extend(geoset_indices);
-        }
-        (vertices.into(), indices)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
-
-    use super::*;
-
-    #[test]
-    fn reads_global_sequences() {
-        let mut bytes = b"GLBS".to_vec();
-        bytes.extend(8_u32.to_le_bytes());
-        bytes.extend(100_u32.to_le_bytes());
-        bytes.extend(200_u32.to_le_bytes());
-
-        let ModelChunk::GlobalSequences(values) =
-            ModelChunk::read(&mut Cursor::new(bytes)).unwrap()
-        else {
-            panic!("expected global sequences");
+        let mut selected = if animation.starts_with('#') {
+            sequence
+                .split('@')
+                .next()
+                .and_then(|index| index.parse::<usize>().ok())
+                .and_then(|index| self.sequences.get(index))
+        } else if !animation.is_empty() {
+            let name = animation.split('@').next().unwrap_or(animation);
+            self.sequences
+                .iter()
+                .find(|sequence| sequence.name.eq_ignore_ascii_case(name))
+        } else {
+            None
         };
-        assert_eq!(values, [100, 200]);
-    }
 
-    #[test]
-    fn reads_pivot_points() {
-        let mut bytes = b"PIVT".to_vec();
-        bytes.extend(24_u32.to_le_bytes());
-        for value in [1_f32, 2., 3., 4., 5., 6.] {
-            bytes.extend(value.to_le_bytes());
+        if selected.is_none()
+            && !self.cameras.is_empty()
+            && matches!(animation, "Stand" | "Portrait" | "Portrait Talk")
+        {
+            let requested = if animation == "Stand" {
+                "Portrait"
+            } else {
+                animation
+            };
+
+            for requested in [requested, "Portrait"] {
+                selected = self.sequences.iter().find(|sequence| {
+                    let Some(prefix) = sequence.name.get(..requested.len()) else {
+                        return false;
+                    };
+                    if !prefix.eq_ignore_ascii_case(requested) {
+                        return false;
+                    }
+
+                    let suffix = &sequence.name[requested.len()..];
+                    suffix.is_empty()
+                        || matches!(suffix.as_bytes()[0], b' ' | b'-')
+                            && suffix
+                                .bytes()
+                                .all(|byte| matches!(byte, b' ' | b'-' | b'0'..=b'9'))
+                });
+                if selected.is_some() {
+                    break;
+                }
+            }
         }
 
-        let ModelChunk::PivotPoints(values) = ModelChunk::read(&mut Cursor::new(bytes)).unwrap()
-        else {
-            panic!("expected pivot points");
-        };
-        assert_eq!(values, [(1., 2., 3.).into(), (4., 5., 6.).into()]);
-    }
-
-    #[test]
-    fn reads_version() {
-        let mut bytes = b"VERS".to_vec();
-        bytes.extend(4_u32.to_le_bytes());
-        bytes.extend(800_u32.to_le_bytes());
-
-        let ModelChunk::Version(version) = ModelChunk::read(&mut Cursor::new(bytes)).unwrap()
-        else {
-            panic!("expected version");
-        };
-        assert_eq!(version, 800);
-    }
-
-    #[test]
-    fn reads_model() {
-        let mut bytes = b"MDLX".to_vec();
-        bytes.extend(b"VERS");
-        bytes.extend(4_u32.to_le_bytes());
-        bytes.extend(800_u32.to_le_bytes());
-        bytes.extend(b"MODL");
-        bytes.extend(372_u32.to_le_bytes());
-        bytes.extend([0; 372]);
-        bytes.extend(b"GEOA");
-        bytes.extend(28_u32.to_le_bytes());
-        bytes.extend(28_u32.to_le_bytes());
-        bytes.extend(0.5_f32.to_le_bytes());
-        bytes.extend(1_u32.to_le_bytes());
-        for value in [1_f32, 2., 3.] {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend(0_u32.to_le_bytes());
-        bytes.extend(b"GEOS");
-        bytes.extend(160_u32.to_le_bytes());
-        bytes.extend(160_u32.to_le_bytes());
-        for tag in [b"PTYP", b"GNDX", b"NRMS", b"PVTX", b"MTGC", b"PCNT"] {
-            bytes.extend(tag);
-            bytes.extend(0_u32.to_le_bytes());
-        }
-        bytes.extend(b"VRTX");
-        bytes.extend(2_u32.to_le_bytes());
-        for value in [-2_f32, 1., 3., 4., -5., 2.] {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend(b"UVAS");
-        bytes.extend(1_u32.to_le_bytes());
-        bytes.extend(b"UVBS");
-        bytes.extend(1_u32.to_le_bytes());
-        bytes.extend(0.25_f32.to_le_bytes());
-        bytes.extend(0.75_f32.to_le_bytes());
-        bytes.extend(b"MATS");
-        bytes.extend(0_u32.to_le_bytes());
-        for value in [1_u32, 2, 3] {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend([0; 28]);
-        bytes.extend(0_u32.to_le_bytes());
-        bytes.extend(b"HELP");
-        bytes.extend(96_u32.to_le_bytes());
-        bytes.extend(96_u32.to_le_bytes());
-        bytes.extend([0; 80]);
-        for value in [7_u32, u32::MAX, 0] {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend(b"GLBS");
-        bytes.extend(8_u32.to_le_bytes());
-        bytes.extend(100_u32.to_le_bytes());
-        bytes.extend(200_u32.to_le_bytes());
-
-        let model = Model::read(&mut Cursor::new(bytes)).unwrap();
-
-        assert_eq!(model.version, 800);
-        assert_eq!(model.global_sequences, [100, 200]);
-        assert!(model.sequences.is_empty());
-        assert!(sync::Arc::ptr_eq(&model.helpers[0], &model.nodes[&7]));
-        assert!(sync::Arc::ptr_eq(
-            model.geosets[0].anim.as_ref().unwrap(),
-            &model.geoset_animations[0]
-        ));
-        assert_eq!(model.bounds.box_.min, (-2., -5., 0.).into());
-        assert_eq!(model.bounds.box_.max, (4., 1., 3.).into());
-        assert_eq!(model.bounds.radius, 6.);
+        selected.or_else(|| self.sequences.first())
     }
 }

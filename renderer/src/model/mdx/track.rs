@@ -2,7 +2,7 @@ use std::io::{self, Read};
 
 use shared;
 
-use crate::mdx::{Model, utils::read_value};
+use crate::model::mdx::{Model, utils::read_value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]

@@ -3,7 +3,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{
+use crate::model::mdx::{
     Node,
     utils::{read_value, read_values},
 };

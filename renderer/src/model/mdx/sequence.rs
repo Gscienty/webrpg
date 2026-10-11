@@ -4,9 +4,12 @@ use std::{
     sync,
 };
 
-use crate::mdx::{
-    bounds::Bounds,
-    utils::{fixed_string_bytes, read_value},
+use crate::model::{
+    mdx::{
+        bounds::Bounds,
+        utils::{fixed_string_bytes, read_value},
+    },
+    util,
 };
 
 #[derive(Debug)]
@@ -59,6 +62,27 @@ impl Sequence {
         (0..size / Self::BYTE_SIZE)
             .map(|_| Self::read(reader))
             .collect()
+    }
+
+    pub fn frame(&self, anim: &str, animation_time: u32) -> u32 {
+        let mut sequence_length = self.interval[1] - self.interval[0];
+        if sequence_length == 0 {
+            sequence_length = 1;
+        }
+
+        let Some(ratio) = util::animation_ratio(anim) else {
+            if self.flags & 1 != 0 {
+                return self.interval[0] + animation_time.min(self.interval[1] - self.interval[0]);
+            }
+            return self.interval[0] + (animation_time % sequence_length);
+        };
+
+        let mut offset = (ratio * sequence_length as f32) as u32;
+        if offset >= sequence_length {
+            offset = sequence_length - 1;
+        }
+
+        self.interval[0] + offset
     }
 }
 

@@ -51,7 +51,7 @@ impl IndexMut<usize> for Vertices {
 }
 
 impl Vertices {
-    pub(crate) fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
                 self.0.as_ptr().cast::<u8>(),
@@ -160,7 +160,7 @@ impl Vertices {
         ]);
     }
 
-    fn bind_attributes(gl: &WebGl2RenderingContext, base: usize) {
+    pub fn bind_attributes(gl: &WebGl2RenderingContext, base: usize) {
         gl.enable_vertex_attrib_array(AttributeID::Color as u32);
         gl.enable_vertex_attrib_array(AttributeID::Position as u32);
         gl.enable_vertex_attrib_array(AttributeID::Texcoord as u32);
@@ -234,29 +234,6 @@ impl Vertices {
             vao,
             vbo,
             ibo: None,
-            owns_buffers: true,
-        })
-    }
-
-    pub fn create_shared_array_object(
-        gl: &WebGl2RenderingContext,
-        vbo: &web_sys::WebGlBuffer,
-        ibo: &web_sys::WebGlBuffer,
-        base: usize,
-    ) -> Result<RenderBuffer, Error> {
-        let vao = gl
-            .create_vertex_array()
-            .ok_or(Error::CreateVertexArrayFailed)?;
-        gl.bind_vertex_array(Some(&vao));
-        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(vbo));
-        gl.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(ibo));
-        Self::bind_attributes(gl, base);
-
-        Ok(RenderBuffer {
-            vao,
-            vbo: vbo.clone(),
-            ibo: Some(ibo.clone()),
-            owns_buffers: false,
         })
     }
 

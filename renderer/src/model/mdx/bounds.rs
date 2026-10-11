@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 
-use crate::mdx::utils::read_value;
+use crate::model::mdx::utils::read_value;
 
 #[repr(C)]
 #[derive(Debug)]

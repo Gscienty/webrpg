@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{Model, Node, Tracks, utils::read_value};
+use crate::model::mdx::{Model, Node, Tracks, utils::read_value};
 
 const KP2E: u32 = u32::from_le_bytes(*b"KP2E");
 const KP2G: u32 = u32::from_le_bytes(*b"KP2G");
@@ -233,7 +233,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::mdx::TrackType;
+    use crate::model::mdx::TrackType;
 
     #[test]
     fn reads_particle_emitter_2_tracks() {

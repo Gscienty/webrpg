@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{
+use crate::model::mdx::{
     Bounds,
     utils::{fixed_string, read_value},
 };

@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{
+use crate::model::mdx::{
     Node, Tracks,
     utils::{fixed_string, read_value},
 };
@@ -75,7 +75,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::mdx::TrackType;
+    use crate::model::mdx::TrackType;
 
     #[test]
     fn reads_attachment_list() {

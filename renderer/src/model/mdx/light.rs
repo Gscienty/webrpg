@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{Node, Tracks, utils::read_value};
+use crate::model::mdx::{Node, Tracks, utils::read_value};
 
 const KLAE: u32 = u32::from_le_bytes(*b"KLAE");
 const KLAI: u32 = u32::from_le_bytes(*b"KLAI");
@@ -121,7 +121,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::mdx::TrackType;
+    use crate::model::mdx::TrackType;
 
     fn push_track(bytes: &mut Vec<u8>, tag: &[u8; 4], value: f32) {
         bytes.extend(tag);

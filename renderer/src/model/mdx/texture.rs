@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::utils::{fixed_string_bytes, read_value};
+use crate::model::mdx::utils::{fixed_string_bytes, read_value};
 
 #[derive(Debug)]
 pub struct Texture {

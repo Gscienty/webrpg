@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{
+use crate::model::mdx::{
     Tracks,
     utils::{fixed_string_bytes, read_value},
 };
@@ -90,7 +90,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::mdx::TrackType;
+    use crate::model::mdx::TrackType;
 
     #[test]
     fn reads_node_tracks() {

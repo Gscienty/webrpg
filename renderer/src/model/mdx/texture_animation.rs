@@ -3,7 +3,7 @@ use std::{
     mem::size_of,
 };
 
-use crate::mdx::{Tracks, utils::read_value};
+use crate::model::mdx::{Tracks, utils::read_value};
 
 const KTAR: u32 = u32::from_le_bytes(*b"KTAR");
 const KTAS: u32 = u32::from_le_bytes(*b"KTAS");
@@ -63,7 +63,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::mdx::TrackType;
+    use crate::model::mdx::TrackType;
 
     #[test]
     fn reads_texture_animation_tracks() {

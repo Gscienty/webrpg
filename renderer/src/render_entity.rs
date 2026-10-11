@@ -1,4 +1,4 @@
-use crate::texture::Texture;
+use crate::{model, texture};
 
 pub const SIGHT_DISTANCE: f32 = 2000.;
 
@@ -36,38 +36,79 @@ impl RenderEntityFlag {
     pub const GroundEffect: Self = Self::OrthoCamera;
 }
 
-pub struct RenderEntity {
+pub struct RenderEntity<'s> {
     pub origin: shared::math3::Vector3,
-    // TODO: model
-    // TODO: attachment_model
+    pub model: &'s model::mdx::Model,
+    pub attachment_model: Option<&'s model::mdx::Model>,
     pub attachment_angles: shared::math3::Orientation,
-    pub skin: Texture,
-    pub splat: Texture,
-    pub name: String,
+    pub skin: Option<&'s texture::Texture>,
+    pub skin_slot: u32,
+    pub splat: Option<&'s texture::Texture>,
+    pub name: &'s str,
     pub number: u32,
+    pub generation: u32,
+    pub instance_id: Option<u32>,
     pub owner: u32,
     pub team: u32,
     pub frame: u32,
-    pub oldframe: u32,
+    pub previous_frame: u32,
+    pub camera_index: u32,
     pub flags: u32,
     pub health: u8,
     pub effect_flags: u16,
-    // TODO: effect_model
+    pub effect_model: Option<&'s model::mdx::Model>,
     pub angle: f32,
     pub scale: f32,
     pub radius: f32,
     pub splat_size: f32,
     pub ground_offset: f32,
-
-    pub shadow: Texture,
+    pub ground_snapshot_z: f32,
+    pub ground_snapshot_valid: bool,
+    pub shadow: Option<&'s texture::Texture>,
     pub shadow_rect: shared::math3::Rect,
-
     pub tint: shared::color::Color32,
     pub tint_valid: bool,
     pub indicator: shared::color::Color32,
 }
 
-impl RenderEntity {
+impl<'s> RenderEntity<'s> {
+    pub fn new(model: &'s model::mdx::Model) -> Self {
+        Self {
+            origin: Default::default(),
+            model,
+            attachment_model: None,
+            attachment_angles: Default::default(),
+            skin: None,
+            skin_slot: 0,
+            splat: None,
+            name: "",
+            number: 0,
+            generation: 0,
+            instance_id: None,
+            owner: 0,
+            team: 0,
+            frame: 0,
+            previous_frame: 0,
+            camera_index: 0,
+            flags: 0,
+            health: 0,
+            effect_flags: 0,
+            effect_model: None,
+            angle: 0.,
+            scale: 1.,
+            radius: 0.,
+            splat_size: 0.,
+            ground_offset: 0.,
+            ground_snapshot_z: 0.,
+            ground_snapshot_valid: false,
+            shadow: None,
+            shadow_rect: Default::default(),
+            tint: Default::default(),
+            tint_valid: false,
+            indicator: Default::default(),
+        }
+    }
+
     pub fn create_sight_matrix(
         &self,
         world_center: shared::math3::Vector2,

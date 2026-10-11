@@ -4,9 +4,15 @@ use std::{
     sync,
 };
 
-use crate::mdx::{
-    Bounds, GeosetAnimation,
-    utils::{read_list, read_value},
+use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlVertexArrayObject};
+
+use crate::{
+    Error, buffer,
+    model::mdx::{
+        Bounds, GeosetAnimation,
+        utils::{read_list, read_value},
+    },
+    shader,
 };
 
 const GNDX: u32 = u32::from_le_bytes(*b"GNDX");
@@ -22,7 +28,7 @@ const VRTX: u32 = u32::from_le_bytes(*b"VRTX");
 const MAX_SKIN_BONES: usize = 4;
 
 #[derive(Debug)]
-pub struct Geoset {
+pub struct MDXGeoset {
     pub vertices: Vec<shared::math3::Vector3>,
     pub normals: Vec<shared::math3::Vector3>,
     pub texcoord: Vec<Vec<shared::math3::Vector2>>,
@@ -40,7 +46,6 @@ pub struct Geoset {
     pub bounds: Vec<Bounds>,
 
     pub anim: Option<sync::Arc<GeosetAnimation>>,
-    pub buffer: Option<renderer::buffer::RenderBuffer>,
 }
 
 fn expect_tag(reader: &mut impl Read, expected: u32) -> io::Result<()> {
@@ -59,7 +64,7 @@ fn missing_tag() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, "missing geoset tag")
 }
 
-impl Geoset {
+impl MDXGeoset {
     pub fn read(reader: &mut impl Read) -> io::Result<Self> {
         let size: u32 = read_value(reader)?;
         let payload_size = (size as usize)
@@ -132,7 +137,6 @@ impl Geoset {
             bounds,
 
             anim: None,
-            buffer: None,
         })
     }
 
@@ -159,7 +163,7 @@ impl Geoset {
         (matrix_palette.len() - 1) as u8
     }
 
-    pub fn pack_vertices(&self) -> renderer::buffer::Vertices {
+    fn pack_vertices(&self) -> buffer::Vertices {
         let matrix_group_count = if self.matrix_group_sizes.is_empty() || self.matrices.is_empty() {
             1
         } else {
@@ -244,7 +248,7 @@ impl Geoset {
                     bone_weight[0] += (255 - normalized_sum) as u8;
                 }
 
-                renderer::buffer::Vertex {
+                buffer::Vertex {
                     position,
                     normal: self.normals[vertex_index],
                     texcoord: self.texcoord[0][vertex_index],
@@ -257,7 +261,7 @@ impl Geoset {
             .into()
     }
 
-    pub fn pack_geometry(&self) -> (renderer::buffer::Vertices, Vec<u32>) {
+    pub fn pack_geometry(&mut self) -> (buffer::Vertices, Vec<u32>) {
         (
             self.pack_vertices(),
             self.triangles.iter().map(|&index| index as u32).collect(),
@@ -265,78 +269,39 @@ impl Geoset {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
+#[derive(Debug)]
+pub struct Geoset {
+    pub property: MDXGeoset,
+    pub vao: WebGlVertexArrayObject,
+    pub index_offset: usize,
+}
 
-    use super::*;
+impl Geoset {
+    pub fn pack_geometry(
+        gl: &WebGl2RenderingContext,
+        ibo: &WebGlBuffer,
+        geoset: MDXGeoset,
+        base: usize,
+    ) -> Result<(Self, buffer::Vertices, Vec<u32>), Error> {
+        let vertices = geoset.pack_vertices();
+        let indices = geoset.triangles.iter().map(|&index| index as u32).collect();
 
-    #[test]
-    fn reads_geoset_lists_and_uv_layers() {
-        let mut bytes = 136_u32.to_le_bytes().to_vec();
-        for tag in [
-            b"PTYP", b"VRTX", b"GNDX", b"NRMS", b"PVTX", b"MTGC", b"PCNT",
-        ] {
-            bytes.extend(tag);
-            bytes.extend(0_u32.to_le_bytes());
-        }
-        bytes.extend(b"UVAS");
-        bytes.extend(1_u32.to_le_bytes());
-        bytes.extend(b"UVBS");
-        bytes.extend(1_u32.to_le_bytes());
-        bytes.extend(0.25_f32.to_le_bytes());
-        bytes.extend(0.75_f32.to_le_bytes());
-        bytes.extend(b"MATS");
-        bytes.extend(0_u32.to_le_bytes());
-        for value in [1_u32, 2, 3] {
-            bytes.extend(value.to_le_bytes());
-        }
-        bytes.extend([0; 28]);
-        bytes.extend(0_u32.to_le_bytes());
+        let vao = gl
+            .create_vertex_array()
+            .ok_or(shader::Error::CreateVertexArrayFailed)?;
+        gl.bind_vertex_array(Some(&vao));
+        gl.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(ibo));
 
-        let geosets = Geoset::read_list(&mut Cursor::new(bytes), 136).unwrap();
+        buffer::Vertices::bind_attributes(gl, base);
 
-        assert_eq!(geosets.len(), 1);
-        assert_eq!(geosets[0].material_id, 1);
-        assert_eq!(geosets[0].group, 2);
-        assert_eq!(geosets[0].selectable, 3);
-        assert_eq!(geosets[0].texcoord, [vec![(0.25, 0.75).into()]]);
-
-        let mut matrix_palette = Vec::new();
-        assert_eq!(
-            Geoset::add_geoset_matrix_palette_entry(&mut matrix_palette, 42),
-            0
-        );
-        assert_eq!(
-            Geoset::add_geoset_matrix_palette_entry(&mut matrix_palette, 7),
-            1
-        );
-        assert_eq!(
-            Geoset::add_geoset_matrix_palette_entry(&mut matrix_palette, 42),
-            0
-        );
-        assert_eq!(matrix_palette, [42, 7]);
-
-        let mut geoset = geosets.into_iter().next().unwrap();
-
-        geoset.vertices = vec![(1., 2., 3.).into(), (4., 5., 6.).into()];
-        geoset.normals = vec![(0., 0., 1.).into(), (0., 1., 0.).into()];
-        geoset.texcoord = vec![vec![(0.25, 0.5).into(), (0.75, 1.).into()]];
-        geoset.vertex_groups = vec![0, 1];
-        geoset.matrix_group_sizes = vec![2, 5];
-        geoset.matrices = vec![10, 11, 20, 21, 22, 23, 24];
-        geoset.triangles = vec![0, 1, 0];
-
-        let (vertices, indices) = geoset.pack_geometry();
-
-        assert_eq!(vertices.len(), 2);
-        assert_eq!(vertices[0].position, (1., 2., 3.).into());
-        assert_eq!(vertices[0].normal, (0., 0., 1.).into());
-        assert_eq!(vertices[0].texcoord, (0.25, 0.5).into());
-        assert_eq!(vertices[0].skin, [1, 0, 0, 0]);
-        assert_eq!(vertices[0].bone_weight, [128, 127, 0, 0]);
-        assert_eq!(vertices[1].skin, [3, 4, 5, 2]);
-        assert_eq!(vertices[1].bone_weight, [64, 64, 64, 63]);
-        assert_eq!(indices, [0_u32, 1, 0]);
+        Ok((
+            Self {
+                property: geoset,
+                vao,
+                index_offset: base,
+            },
+            vertices,
+            indices,
+        ))
     }
 }

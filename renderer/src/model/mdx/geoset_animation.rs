@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{Tracks, utils::read_value};
+use crate::model::mdx::{Tracks, utils::read_value};
 
 const KGAC: u32 = u32::from_le_bytes(*b"KGAC");
 const KGAO: u32 = u32::from_le_bytes(*b"KGAO");

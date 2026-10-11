@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{
+use crate::model::mdx::{
     Tracks,
     utils::{fixed_string_bytes, read_value},
 };
@@ -96,7 +96,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::mdx::TrackType;
+    use crate::model::mdx::TrackType;
 
     fn push_vector_track(bytes: &mut Vec<u8>, tag: &[u8; 4], values: [f32; 3]) {
         bytes.extend(tag);

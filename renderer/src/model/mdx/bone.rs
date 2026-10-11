@@ -3,7 +3,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{Node, utils::read_value};
+use crate::model::mdx::{Node, utils::read_value};
 
 #[derive(Debug)]
 pub struct Bone {

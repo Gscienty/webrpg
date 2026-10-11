@@ -170,7 +170,6 @@ impl ParticleVertices {
             vao,
             vbo,
             ibo: None,
-            owns_buffers: true,
         })
     }
 }

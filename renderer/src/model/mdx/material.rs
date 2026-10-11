@@ -3,7 +3,7 @@ use std::{
     mem::size_of,
 };
 
-use crate::mdx::{Tracks, utils::read_value};
+use crate::model::mdx::{Tracks, utils::read_value};
 
 const KMTA: u32 = u32::from_le_bytes(*b"KMTA");
 const KMTE: u32 = u32::from_le_bytes(*b"KMTE");
@@ -184,7 +184,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::mdx::TrackType;
+    use crate::model::mdx::TrackType;
 
     #[test]
     fn reads_layer_tracks() {

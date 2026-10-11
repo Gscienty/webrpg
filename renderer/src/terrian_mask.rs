@@ -1,3 +1,4 @@
+#[derive(Default, Debug)]
 pub struct TerrainMask {
     pub width: u32,
     pub height: u32,

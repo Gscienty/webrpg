@@ -4,7 +4,7 @@ use std::{
     sync,
 };
 
-use crate::mdx::{Node, Tracks, utils::read_value};
+use crate::model::mdx::{Node, Tracks, utils::read_value};
 
 const KRAL: u32 = u32::from_le_bytes(*b"KRAL");
 const KRCO: u32 = u32::from_le_bytes(*b"KRCO");
@@ -118,7 +118,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::mdx::TrackType;
+    use crate::model::mdx::TrackType;
 
     #[test]
     fn reads_ribbon_emitter_tracks() {

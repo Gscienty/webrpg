@@ -1,5 +1,6 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LightType {
+    #[default]
     Omni,
     Direct,
     Ambient,
@@ -18,7 +19,7 @@ pub struct ModelLight {
     pub typ: LightType,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct EnvironLight {
     pub dir: shared::math3::Vector3,
     pub color: shared::math3::Vector3,

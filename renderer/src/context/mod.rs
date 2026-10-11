@@ -28,6 +28,7 @@ pub struct Context {
     pub particles: Particles,
 
     pub msaa_samples: i32,
+    pub ui_scene: shared::math3::Rect,
 
     pub depth_map: RenderTarget,
 
@@ -80,6 +81,7 @@ impl Context {
             drawable_width,
             drawable_height,
             render_stats: RefCell::new(RenderStats::default()),
+            ui_scene: shared::math3::Rect::new(0., 0., 1600., 1200.),
         })
     }
 
