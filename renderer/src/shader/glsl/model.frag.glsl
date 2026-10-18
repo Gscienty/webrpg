@@ -31,8 +31,7 @@ vec4 frag() {
         col.rgb = mix(u_fog_color, col.rgb, fog_factor);
     }
     if (u_alpha_key) {
-      float edge = max(fwidth(col.a), 1.0 / 255.0);
-      col.a = smoothstep(u_alpha_cutoff - edge, u_alpha_cutoff + edge, col.a);
+        if (col.a < u_alpha_cutoff) discard;
     }
     return col;
 }

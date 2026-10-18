@@ -5,7 +5,6 @@ use web_sys::WebGl2RenderingContext;
 
 use crate::{
     context::{Context, RenderPhase},
-    draw,
     model::{
         self,
         mdx::{Geoset, Material},

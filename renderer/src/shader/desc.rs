@@ -68,7 +68,7 @@ impl UniformType {
 #[cfg(test)]
 mod tests {
     use super::{AttributeID, UniformType};
-    use crate::shader::{FOW_RAYCAST_SHADER, PARTICLE_SHADER};
+    use crate::shader::{FOW_RAYCAST_SHADER, MODEL_SHADER, PARTICLE_SHADER};
 
     #[test]
     fn displays_glsl_type_names() {
@@ -98,6 +98,13 @@ mod tests {
         }
         assert!(fragment.contains("texture(u_fog_of_war, v_texcoord2)"));
         assert!(fragment.contains("u_alpha_cutoff"));
+    }
+
+    #[test]
+    fn model_alpha_key_discards_transparent_fragments() {
+        let fragment = MODEL_SHADER.generate_shader_source(false);
+
+        assert!(fragment.contains("if (col.a < u_alpha_cutoff) discard;"));
     }
 
     #[test]
