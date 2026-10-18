@@ -9,10 +9,10 @@ use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlVertexArrayObject};
 use crate::{
     Error, buffer,
     model::mdx::{
-        Bounds, GeosetAnimation,
+        Bounds, GeosetAnimation, Model,
         utils::{read_list, read_value},
     },
-    shader,
+    shader::{self, AttributeID},
 };
 
 const GNDX: u32 = u32::from_le_bytes(*b"GNDX");
@@ -163,7 +163,7 @@ impl MDXGeoset {
         (matrix_palette.len() - 1) as u8
     }
 
-    fn pack_vertices(&self) -> buffer::Vertices {
+    fn pack_vertices(&self) -> (buffer::Vertices, Vec<u32>) {
         let matrix_group_count = if self.matrix_group_sizes.is_empty() || self.matrices.is_empty() {
             1
         } else {
@@ -194,7 +194,8 @@ impl MDXGeoset {
             matrix_offset = matrix_offset.saturating_add(source_group_size);
         }
 
-        self.vertices
+        let vertices = self
+            .vertices
             .iter()
             .enumerate()
             .map(|(vertex_index, &position)| {
@@ -258,50 +259,138 @@ impl MDXGeoset {
                 }
             })
             .collect::<Vec<_>>()
-            .into()
+            .into();
+
+        (vertices, matrix_palette)
     }
 
-    pub fn pack_geometry(&mut self) -> (buffer::Vertices, Vec<u32>) {
-        (
-            self.pack_vertices(),
-            self.triangles.iter().map(|&index| index as u32).collect(),
+    pub fn evaluate_geoset_color(
+        &self,
+        model: &Model,
+        global_time: u32,
+        frame: u32,
+    ) -> shared::math3::Vector4 {
+        let Some(ref anim) = self.anim else {
+            return (1., 1., 1., 1.).into();
+        };
+
+        let mut color: shared::math3::Vector4 = (
+            1.,
+            1.,
+            1.,
+            if anim.alpha.is_infinite() {
+                1.
+            } else {
+                anim.alpha
+            },
         )
+            .into();
+
+        if let Some(ref alphas) = anim.geoset_alphas
+            && let Some(alpha) = alphas.get_value(model, global_time, frame)
+        {
+            color[3] = alpha;
+        }
+
+        if anim.flags & 0x02 != 0 {
+            let geoset_color = if let Some(ref colors) = anim.geoset_colors
+                && let Some(color) = colors.get_value(model, global_time, frame)
+            {
+                color
+            } else {
+                anim.color
+            };
+
+            color[0] = geoset_color[0];
+            color[1] = geoset_color[1];
+            color[2] = geoset_color[2];
+        }
+
+        color[0] = color[0].clamp(0., 1.);
+        color[1] = color[1].clamp(0., 1.);
+        color[2] = color[2].clamp(0., 1.);
+        color[3] = color[3].clamp(0., 1.);
+
+        color
     }
 }
 
 #[derive(Debug)]
 pub struct Geoset {
     pub property: MDXGeoset,
-    pub vao: WebGlVertexArrayObject,
+    pub vaos: Vec<WebGlVertexArrayObject>,
     pub index_offset: usize,
+
+    pub matrix_palette: Vec<u32>,
 }
 
 impl Geoset {
     pub fn pack_geometry(
         gl: &WebGl2RenderingContext,
+        vbo: &WebGlBuffer,
         ibo: &WebGlBuffer,
+        uvbuffer: Option<&WebGlBuffer>,
         geoset: MDXGeoset,
-        base: usize,
+        vertex_base: usize,
+        index_base: usize,
+        uvbase: usize,
     ) -> Result<(Self, buffer::Vertices, Vec<u32>), Error> {
-        let vertices = geoset.pack_vertices();
+        let (vertices, matrix_palette) = geoset.pack_vertices();
         let indices = geoset.triangles.iter().map(|&index| index as u32).collect();
 
-        let vao = gl
-            .create_vertex_array()
-            .ok_or(shader::Error::CreateVertexArrayFailed)?;
-        gl.bind_vertex_array(Some(&vao));
-        gl.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(ibo));
+        let channels = geoset.texcoord.len().max(1);
 
-        buffer::Vertices::bind_attributes(gl, base);
+        let mut vaos = Vec::with_capacity(channels);
+        for channel in 0..channels {
+            let vao = gl
+                .create_vertex_array()
+                .ok_or(shader::Error::CreateVertexArrayFailed)?;
+            gl.bind_vertex_array(Some(&vao));
+            gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(vbo));
+            gl.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(ibo));
+            buffer::Vertices::bind_attributes(gl, vertex_base);
+
+            if let Some(uvbuffer) = uvbuffer
+                && channel != 0
+            {
+                gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(uvbuffer));
+                gl.vertex_attrib_pointer_with_i32(
+                    AttributeID::Texcoord as u32,
+                    2,
+                    WebGl2RenderingContext::FLOAT,
+                    false,
+                    size_of::<shared::math3::Vector2>() as i32,
+                    ((uvbase + (channel - 1) * geoset.vertices.len())
+                        * size_of::<shared::math3::Vector2>()) as i32,
+                );
+            }
+
+            vaos.push(vao);
+        }
 
         Ok((
             Self {
                 property: geoset,
-                vao,
-                index_offset: base,
+                vaos,
+                index_offset: index_base * size_of::<u32>(),
+
+                matrix_palette,
             },
             vertices,
             indices,
         ))
+    }
+
+    pub fn is_visible(&self, model: &Model, global_time: u32, frame: u32) -> bool {
+        if self.property.anim.is_some() {
+            let geoset_color = self
+                .property
+                .evaluate_geoset_color(model, global_time, frame);
+            if geoset_color[3] < f32::EPSILON {
+                return false;
+            }
+        }
+
+        true
     }
 }

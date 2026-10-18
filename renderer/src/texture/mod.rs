@@ -513,6 +513,7 @@ impl RenderTarget {
         gl: &WebGl2RenderingContext,
         width: u32,
         height: u32,
+        internal_format: u32,
         format: u32,
         typ: u32,
         attachment: u32,
@@ -545,7 +546,7 @@ impl RenderTarget {
             .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
                 WebGl2RenderingContext::TEXTURE_2D,
                 0,
-                format as i32,
+                internal_format as i32,
                 width as i32,
                 height as i32,
                 0,

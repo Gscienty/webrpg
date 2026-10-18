@@ -6,6 +6,7 @@ pub enum LightType {
     Ambient,
 }
 
+#[derive(Default)]
 pub struct ModelLight {
     pub pos: shared::math3::Vector3,
     pub dir: shared::math3::Vector3,
@@ -30,6 +31,7 @@ pub struct EnvironLight {
     pub valid: bool,
 }
 
+#[derive(Default)]
 pub struct ModelLighting {
     pub lights: Vec<ModelLight>,
     pub ambient: shared::math3::Vector3,

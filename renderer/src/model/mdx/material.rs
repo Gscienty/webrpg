@@ -3,7 +3,12 @@ use std::{
     mem::size_of,
 };
 
-use crate::model::mdx::{Tracks, utils::read_value};
+use crate::{
+    context::{Context, RenderPhase},
+    model::mdx::{Model, Tracks, utils::read_value},
+    shader::ModelState,
+};
+use web_sys::WebGl2RenderingContext;
 
 const KMTA: u32 = u32::from_le_bytes(*b"KMTA");
 const KMTE: u32 = u32::from_le_bytes(*b"KMTE");
@@ -103,6 +108,199 @@ impl Layer {
 
         Ok(result)
     }
+
+    pub const fn is_blended(&self) -> bool {
+        matches!(
+            self.blend_mode,
+            shared::BlendMode::Blend
+                | shared::BlendMode::Add
+                | shared::BlendMode::AddAlpha
+                | shared::BlendMode::Modulate
+                | shared::BlendMode::Modulate2X
+        )
+    }
+
+    pub fn set_layer_blend(
+        &self,
+        context: &Context,
+        state: &mut ModelState,
+        layer_id: usize,
+    ) -> bool {
+        context.set_alpha_key_state(false);
+
+        if context.render_phase == RenderPhase::Lights && self.is_blended() {
+            return false;
+        }
+
+        let gl = &context.gl;
+        match self.blend_mode {
+            shared::BlendMode::None => {
+                gl.disable(WebGl2RenderingContext::BLEND);
+                if layer_id == 0 {
+                    gl.blend_func(WebGl2RenderingContext::ONE, WebGl2RenderingContext::ZERO);
+                } else {
+                    gl.blend_func(
+                        WebGl2RenderingContext::SRC_ALPHA,
+                        WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
+                    );
+                }
+                gl.depth_mask(true);
+            }
+            shared::BlendMode::AlphaKey => {
+                state.alpha_key = true;
+                context.set_alpha_key_state(true);
+            }
+            shared::BlendMode::Blend => {
+                gl.enable(WebGl2RenderingContext::BLEND);
+                gl.blend_func(
+                    WebGl2RenderingContext::SRC_ALPHA,
+                    WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
+                );
+                gl.depth_mask(false);
+            }
+            shared::BlendMode::Add => {
+                gl.enable(WebGl2RenderingContext::BLEND);
+                gl.blend_func(WebGl2RenderingContext::ONE, WebGl2RenderingContext::ONE);
+                gl.depth_mask(false);
+            }
+            shared::BlendMode::AddAlpha => {
+                gl.enable(WebGl2RenderingContext::BLEND);
+                gl.blend_func(
+                    WebGl2RenderingContext::SRC_ALPHA,
+                    WebGl2RenderingContext::ONE,
+                );
+                gl.depth_mask(false);
+            }
+            shared::BlendMode::Modulate => {
+                gl.enable(WebGl2RenderingContext::BLEND);
+                gl.blend_func(
+                    WebGl2RenderingContext::DST_COLOR,
+                    WebGl2RenderingContext::ZERO,
+                );
+                gl.depth_mask(false);
+            }
+            shared::BlendMode::Modulate2X => {
+                gl.enable(WebGl2RenderingContext::BLEND);
+                gl.blend_func(
+                    WebGl2RenderingContext::DST_COLOR,
+                    WebGl2RenderingContext::SRC_COLOR,
+                );
+                gl.depth_mask(false);
+            }
+        }
+
+        true
+    }
+
+    pub fn apply_flags(&self, context: &Context) {
+        let gl = &context.gl;
+        if self.flags & GeoFlag::TwoSided as u32 != 0 {
+            gl.disable(WebGl2RenderingContext::CULL_FACE);
+        }
+        if self.flags & GeoFlag::NoDepthTest as u32 != 0 {
+            gl.disable(WebGl2RenderingContext::DEPTH_TEST);
+        }
+        if self.flags & GeoFlag::NoDepthSet as u32 != 0 {
+            gl.depth_mask(false);
+        }
+    }
+
+    pub fn evaluate_layer_alpha(
+        &self,
+        material: &Material,
+        model: &Model,
+        global_time: u32,
+        frame: u32,
+    ) -> f32 {
+        let mut alpha = if self.alpha.is_finite() {
+            self.alpha
+        } else {
+            1.
+        };
+
+        if let Some(value) = self
+            .alpha_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+        {
+            alpha = value;
+        }
+        if let Some(material_alpha) = material
+            .alpha_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+        {
+            alpha *= material_alpha;
+        }
+
+        if !alpha.is_finite() {
+            alpha = 1.;
+        }
+        alpha.clamp(0., 1.)
+    }
+
+    pub fn evaluate_layer_texture_id(&self, model: &Model, global_time: u32, frame: u32) -> usize {
+        self.flipbook_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .filter(|&texture_id| (texture_id as usize) < model.textures.len())
+            .unwrap_or(self.texture_id) as usize
+    }
+
+    pub fn bind_texture_animation(
+        &self,
+        model: &Model,
+        global_time: u32,
+        frame: u32,
+    ) -> shared::math3::Matrix3 {
+        let mut translation = shared::math3::Vector3::default();
+        let mut rotation = shared::math3::Quaternion::default();
+        let mut scale = shared::math3::Vector3::from((1., 1., 1.));
+
+        if let Some(animation) = model.texture_animations.get(self.transform_id as usize) {
+            if let Some(value) = animation
+                .translation
+                .as_ref()
+                .and_then(|track| track.get_value(model, global_time, frame))
+            {
+                translation = value;
+            }
+            if let Some(value) = animation
+                .rotation
+                .as_ref()
+                .and_then(|track| track.get_value(model, global_time, frame))
+            {
+                rotation = value;
+            }
+            if let Some(value) = animation
+                .scale
+                .as_ref()
+                .and_then(|track| track.get_value(model, global_time, frame))
+            {
+                scale = value;
+            }
+        }
+
+        if !translation[0].is_finite() || !translation[1].is_finite() {
+            translation = shared::math3::Vector3::default();
+        }
+        if !rotation.z.is_finite() || !rotation.w.is_finite() {
+            rotation = shared::math3::Quaternion::default();
+        }
+        if !scale[0].is_finite() || !scale[1].is_finite() {
+            scale = shared::math3::Vector3::from((1., 1., 1.));
+        }
+
+        let c = rotation.w * rotation.w - rotation.z * rotation.z;
+        let s = 2. * rotation.z * rotation.w;
+        let tx = scale[0] * (c * (translation[0] - 0.5) - s * (translation[1] - 0.5)) + 0.5;
+        let ty = scale[1] * (s * (translation[0] - 0.5) + c * (translation[1] - 0.5)) + 0.5;
+        let mut matrix = shared::math3::Matrix3::zero();
+        matrix[0] = (scale[0] * c, scale[1] * s, 0.).into();
+        matrix[1] = (-scale[0] * s, scale[1] * c, 0.).into();
+        matrix[2] = (tx, ty, 1.).into();
+        matrix
+    }
 }
 
 #[derive(Debug)]
@@ -176,6 +374,12 @@ impl Material {
             values.push(Self::read(&mut payload)?);
         }
         Ok(values)
+    }
+
+    pub fn has_pass(&self, blended_pass: bool) -> bool {
+        self.layers
+            .iter()
+            .any(|layer| layer.is_blended() == blended_pass)
     }
 }
 

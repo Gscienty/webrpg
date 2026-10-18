@@ -20,7 +20,7 @@ pub struct Sprite<'s> {
 impl<'s> Sprite<'s> {
     pub fn draw(
         &self,
-        context: &context::Context,
+        context: &mut context::Context,
         time: u32,
         delta_time: u32,
         tint: Option<shared::color::Color32>,
@@ -61,7 +61,7 @@ impl<'s> Sprite<'s> {
         );
         let view_projection_matrix = view_projection_matrix.scale((1., 1., 0.).into());
 
-        let view = View {
+        View {
             scissor: shared::math3::Rect::new(0., 0., 1., 1.),
             entities: vec![entity],
             rdflags: ViewRDFlag::NoWorldModel as u32
@@ -80,8 +80,7 @@ impl<'s> Sprite<'s> {
             ],
 
             ..Default::default()
-        };
-
-        view.render(context);
+        }
+        .render(context);
     }
 }

@@ -66,6 +66,17 @@ impl Archive {
         data.truncate(read);
         Ok(data)
     }
+
+    pub fn list_files(&mut self) -> Result<Vec<String>, String> {
+        let list =
+            String::from_utf8(self.read_file("(listfile)")?).map_err(|error| error.to_string())?;
+        Ok(list
+            .lines()
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .map(str::to_owned)
+            .collect())
+    }
 }
 
 /// An MPQ loaded from OPFS. Opening is asynchronous; reads are synchronous.

@@ -13,7 +13,7 @@ pub static MODEL_SHADER: Descriptor<21, 6, 6> = Descriptor::new(
             UniformType::FloatMat4,
             PrecisionType::High,
             128,
-            bone_count
+            bones_count
         ),
         uniform_declare!(
             ModelState,
@@ -35,7 +35,7 @@ pub static MODEL_SHADER: Descriptor<21, 6, 6> = Descriptor::new(
         ),
         uniform_declare!(
             ModelState,
-            light_count,
+            lights_count,
             UniformType::Int,
             PrecisionType::Low
         ),
@@ -160,7 +160,7 @@ pub static MODEL_INSTANCED_SHADER: Descriptor<20, 7, 6> = Descriptor::new(
             UniformType::FloatMat4,
             PrecisionType::High,
             128,
-            bone_count
+            bones_count
         ),
         uniform_declare!(
             ModelState,
@@ -182,7 +182,7 @@ pub static MODEL_INSTANCED_SHADER: Descriptor<20, 7, 6> = Descriptor::new(
         ),
         uniform_declare!(
             ModelState,
-            light_count,
+            lights_count,
             UniformType::Int,
             PrecisionType::Low
         ),

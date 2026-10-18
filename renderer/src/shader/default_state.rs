@@ -1,4 +1,4 @@
-use crate::shader::ModelLighting;
+use crate::{shader::ModelLighting, view::View};
 
 #[repr(C)]
 pub struct DefaultState {
@@ -38,6 +38,17 @@ impl Default for DefaultState {
 }
 
 impl DefaultState {
+    pub fn new(view: &View<'_>) -> Self {
+        Self {
+            texture_matrix: view.default_state_init_value.texture_matrix,
+            model: view.default_state_init_value.model,
+            light_matrix: view.default_state_init_value.light_matrix,
+            normal_matrix: view.default_state_init_value.normal_matrix,
+
+            ..Default::default()
+        }
+    }
+
     pub fn set_lighting(&mut self, lighting: &ModelLighting, is_default: bool) {
         let count = lighting.lights.len();
         if count == 0 {

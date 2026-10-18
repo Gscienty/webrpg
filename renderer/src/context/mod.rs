@@ -15,7 +15,13 @@ use std::cell::RefCell;
 
 use web_sys::WebGl2RenderingContext;
 
-use crate::{Error, context::buffers::Buffers, render_stats::RenderStats, texture::RenderTarget};
+use crate::{
+    Error,
+    context::buffers::Buffers,
+    model::mdx::Model,
+    render_stats::RenderStats,
+    texture::{self, RenderTarget},
+};
 
 pub struct Context {
     pub gl: WebGl2RenderingContext,
@@ -62,6 +68,7 @@ impl Context {
             &gl,
             1024,
             1024,
+            WebGl2RenderingContext::DEPTH_COMPONENT32F,
             WebGl2RenderingContext::DEPTH_COMPONENT,
             WebGl2RenderingContext::FLOAT,
             WebGl2RenderingContext::DEPTH_ATTACHMENT,
@@ -115,6 +122,35 @@ impl Context {
                 WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
             );
             gl.depth_mask(false);
+        }
+    }
+
+    pub fn get_texture<'s>(
+        &'s self,
+        model: &Model,
+        team_id: usize,
+        texture_id: usize,
+        replaceable_id: u32,
+        override_texture: Option<&'s texture::Texture>,
+        override_slot: u32,
+    ) -> Option<&'s texture::Texture> {
+        let model_tex = &model.textures[texture_id];
+
+        match replaceable_id {
+            1 => self.textures.team_color.get(team_id),
+            2 => self.textures.team_glow.get(team_id),
+            _ => {
+                if let Some(override_texture) = override_texture
+                    && replaceable_id != 0
+                    && override_slot == replaceable_id
+                {
+                    return Some(override_texture);
+                }
+
+                let texture_id = model_tex.texture_id?;
+
+                self.textures.textures.get(&texture_id)
+            }
         }
     }
 }

@@ -1,3 +1,5 @@
+use crate::view::View;
+
 #[repr(C)]
 pub struct SpriteState {
     pub view_projection: shared::math3::Matrix4,
@@ -21,6 +23,17 @@ impl Default for SpriteState {
             fog_enable: false,
             fog_color: shared::math3::Vector3::default(),
             fog_params: shared::math3::Vector2::default(),
+        }
+    }
+}
+
+impl SpriteState {
+    pub fn new(view: &View<'_>) -> Self {
+        Self {
+            view_projection: view.sprite_state_init_value.view_projection,
+            model: view.sprite_state_init_value.model,
+
+            ..Default::default()
         }
     }
 }

@@ -21,7 +21,7 @@ vec3 vertex_lighting(vec3 normal, vec3 world_pos) {
     vec3 lighting = vec3(0.0);
     v_shadowlight = vec3(0.0);
     for (int i = 0; i < 8; ++i) {
-        if (i >= u_light_count) break;
+        if (i >= u_lights_count) break;
         vec3 contribution = apply_light(u_lights[i], n, world_pos);
         lighting += contribution;
         if (i == 0 && int(u_lights[i][0].w + 0.5) == MODEL_LIGHT_DIRECT)

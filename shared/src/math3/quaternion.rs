@@ -111,7 +111,7 @@ impl Neg for Quaternion {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self::from((-self.x, -self.y, -self.z, -self.w))
+        Self::from((-self.x, -self.y, -self.z, self.w)).normalized()
     }
 }
 

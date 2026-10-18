@@ -1,10 +1,14 @@
 use std::{
+    collections::BTreeMap,
     io::{self, Read},
     mem::size_of,
     sync,
 };
 
-use crate::model::mdx::{Node, Tracks, utils::read_value};
+use crate::{
+    model::mdx::{Model, Node, Tracks, utils::read_value},
+    shader::{self, ModelLight},
+};
 
 const KLAE: u32 = u32::from_le_bytes(*b"KLAE");
 const KLAI: u32 = u32::from_le_bytes(*b"KLAI");
@@ -113,6 +117,90 @@ impl Light {
             values.push(Self::read(&mut payload)?);
         }
         Ok(values)
+    }
+
+    pub fn evaluate_light(
+        &self,
+        model: &Model,
+        global_matrices: &BTreeMap<u32, shared::math3::Matrix4>,
+        model_matrix: shared::math3::Matrix4,
+        global_time: u32,
+        frame: u32,
+        use_visibility: bool,
+    ) -> Option<ModelLight> {
+        let visibility = if use_visibility {
+            self.visibility_tracks
+                .as_ref()
+                .and_then(|track| track.get_value(model, global_time, frame))
+                .unwrap_or(1.)
+        } else {
+            1.
+        };
+        if visibility < f32::EPSILON {
+            return None;
+        }
+
+        let color = self
+            .color_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.color);
+        let intensity = self
+            .intensity_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.intensity);
+        let ambient = self
+            .ambient_color_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.ambient_color);
+        let ambient_intensity = self
+            .ambient_intensity_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.ambient_intensity);
+        let atten_start = self
+            .attenuation_start_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(model, global_time, frame))
+            .unwrap_or(self.attenuation_start);
+
+        let pivot = model
+            .pivots
+            .get(self.node.object_id as usize)
+            .copied()
+            .unwrap_or_default();
+        let mut local_pos = pivot;
+        let mut local_dir_target = pivot + shared::math3::Vector3::from((0., 0., -1.));
+        if let Some(&node_matrix) = global_matrices.get(&self.node.object_id) {
+            local_pos = node_matrix * local_pos;
+            local_dir_target = node_matrix * local_dir_target;
+        }
+
+        let world_pos = model_matrix * local_pos;
+        let world_dir_target = model_matrix * local_dir_target;
+        let world_dir = world_dir_target - world_pos;
+        let world_dir = if world_dir.length_sq() < f32::EPSILON {
+            shared::math3::Vector3::from((0., 0., -1.))
+        } else {
+            world_dir.normalize()
+        };
+
+        Some(ModelLight {
+            pos: world_pos,
+            dir: -world_dir,
+            color,
+            ambient,
+            atten_start,
+            intensity: intensity * visibility,
+            ambient_intensity: ambient_intensity * visibility,
+            typ: match self.type_ {
+                LightType::Omni => shader::LightType::Omni,
+                LightType::Direct => shader::LightType::Direct,
+                LightType::Ambient => shader::LightType::Ambient,
+            },
+        })
     }
 }
 

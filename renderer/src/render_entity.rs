@@ -1,4 +1,19 @@
-use crate::{model, texture};
+use std::collections::BTreeMap;
+
+use shared::math3::FrustumContains;
+use web_sys::WebGl2RenderingContext;
+
+use crate::{
+    context::{Context, RenderPhase},
+    draw,
+    model::{
+        self,
+        mdx::{Geoset, Material},
+    },
+    shader::{LightType, ModelLight, ModelLighting, ModelState},
+    texture,
+    view::{View, ViewRDFlag},
+};
 
 pub const SIGHT_DISTANCE: f32 = 2000.;
 
@@ -36,6 +51,7 @@ impl RenderEntityFlag {
     pub const GroundEffect: Self = Self::OrthoCamera;
 }
 
+#[derive(Clone, Copy)]
 pub struct RenderEntity<'s> {
     pub origin: shared::math3::Vector3,
     pub model: &'s model::mdx::Model,
@@ -139,6 +155,313 @@ impl<'s> RenderEntity<'s> {
             dx * dx + dy * dy <= range_sq
         })
     }
+
+    pub fn get_entity_matrix(&self) -> shared::math3::Matrix4 {
+        let angle = shared::math3::Orientation::from((self.angle, 0., 0.));
+        let rotation = shared::math3::Quaternion::from(&angle);
+
+        shared::math3::Matrix4::from_rotation_translation_scale_origin(
+            rotation,
+            self.origin,
+            shared::math3::Vector3::from((self.scale, self.scale, self.scale)),
+            shared::math3::Vector3::from((0., 0., 0.)),
+        )
+    }
+
+    pub fn render(&self, view: &View<'_>, context: &Context) {
+        // TODO: ribbons
+
+        let transform = self.get_entity_matrix();
+        self.render_model(view, context, transform);
+    }
+
+    fn render_model(&self, view: &View<'_>, context: &Context, transform: shared::math3::Matrix4) {
+        if view.rdflags & ViewRDFlag::NoFrustumCull as u32 == 0 {
+            let sphere = shared::math3::Sphere3 {
+                center: transform * self.model.bounds.box_.center(),
+                radius: self.model.bounds.radius * self.scale,
+            };
+            if !view.frustum.contains(sphere)
+                || !view.frustum.contains((self.model.bounds.box_, transform))
+            {
+                return;
+            }
+        }
+
+        let mut remapped = *self;
+        let entity = if self.flags & RenderEntityFlag::HasLumber as u32 != 0 {
+            remapped.frame = self.model.remap_animation(remapped.frame, "Lumber");
+            remapped.previous_frame = self
+                .model
+                .remap_animation(remapped.previous_frame, "Lumber");
+            &remapped
+        } else if self.flags & RenderEntityFlag::HasGold as u32 != 0 {
+            remapped.frame = self.model.remap_animation(remapped.frame, "Gold");
+            remapped.previous_frame = self.model.remap_animation(remapped.previous_frame, "Gold");
+            &remapped
+        } else {
+            self
+        };
+
+        entity.render_model_inner(view, context, transform);
+    }
+
+    fn render_model_inner(
+        &self,
+        view: &View<'_>,
+        context: &Context,
+        transform: shared::math3::Matrix4,
+    ) {
+        let view_projection_matrix = if context.render_phase == RenderPhase::Lights {
+            view.light_matrix
+        } else {
+            view.view_projection_matrix
+        };
+
+        let portrait_lighting = self.flags & RenderEntityFlag::PortraitLighting as u32 != 0;
+        let environment = if !portrait_lighting && view.entity_light.valid {
+            Some(&view.entity_light)
+        } else if !portrait_lighting && view.terrain_light.valid {
+            Some(&view.terrain_light)
+        } else {
+            None
+        };
+
+        let global_matrix = self.model.bone_matrices(
+            view.lerpfrac,
+            transform,
+            view.time,
+            self.frame,
+            self.previous_frame,
+        );
+
+        let mut lighting = if let Some(environment) = environment
+            && let Ok(lighting) = ModelLighting::try_from(environment)
+        {
+            lighting
+        } else {
+            ModelLighting::default()
+        };
+        lighting.lights.extend(self.model.collect_model_lights(
+            &global_matrix,
+            transform,
+            view.time,
+            self.frame,
+        ));
+        let ambient = if lighting.lights.is_empty() {
+            if portrait_lighting { 0.58 } else { 0.35 }
+        } else {
+            if portrait_lighting { 0.22 } else { 0. }
+        };
+        lighting.ambient = (ambient, ambient, ambient).into();
+
+        if lighting.lights.is_empty() {
+            let directional = if portrait_lighting { 0.62 } else { 0.75 };
+            lighting.lights.push(ModelLight {
+                dir: (
+                    -view.light_matrix[0][2],
+                    -view.light_matrix[1][2],
+                    -view.light_matrix[2][2],
+                )
+                    .into(),
+                color: (directional, directional, directional).into(),
+                intensity: 1.,
+                typ: LightType::Direct,
+
+                ..Default::default()
+            });
+        }
+
+        let packed_lights = lighting.pack();
+        let lights_count = packed_lights.len().min(8);
+        let mut lights = [shared::math3::Matrix4::zero(); 8];
+        lights[..lights_count].copy_from_slice(&packed_lights[..lights_count]);
+
+        if self.flags & RenderEntityFlag::NoFogOfWar as u32 != 0 {
+            context.textures.white_texture.bind(&context.gl, 2);
+            context.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
+        }
+
+        self.render_geosets(
+            view,
+            context,
+            &global_matrix,
+            ModelState {
+                model: transform,
+                normal_matrix: transform.normal(),
+                unshaded: self.flags & RenderEntityFlag::NoLighting as u32 != 0,
+                view_projection: view_projection_matrix,
+                texture_matrix: view.texture_matrix,
+                light_matrix: view.light_matrix,
+                fog_enable: view.fog_enable,
+                first_bone_lookup_index: 0.,
+                fog_color: if view.fog_enable {
+                    view.fog_color
+                } else {
+                    Default::default()
+                },
+                fog_params: if view.fog_enable {
+                    (view.fog_start, view.fog_end).into()
+                } else {
+                    Default::default()
+                },
+                lights,
+                lights_count: lights_count as u32,
+
+                ..Default::default()
+            },
+        );
+
+        // TODO render ribbon & particle
+    }
+
+    fn render_geosets(
+        &self,
+        view: &View<'_>,
+        context: &Context,
+        global_matrix: &BTreeMap<u32, shared::math3::Matrix4>,
+        mut state: ModelState,
+    ) {
+        let force_unshaded = self.flags & RenderEntityFlag::NoLighting as u32 != 0;
+
+        // TODO skin
+
+        let color = if self.tint_valid {
+            self.tint
+        } else {
+            shared::color::Color32::white()
+        };
+        let tint: shared::math3::Vector4 = (
+            color.red as f32 / 255.,
+            color.green as f32 / 255.,
+            color.blue as f32 / 255.,
+            color.alpha as f32 / 255.,
+        )
+            .into();
+        let translucent_instance = tint[3] < 1. - f32::EPSILON;
+
+        for blended_pass in [false, true] {
+            if !context
+                .render_phase
+                .includes_pass(blended_pass, translucent_instance)
+            {
+                continue;
+            }
+
+            for geoset in &self.model.geosets {
+                if !geoset.is_visible(self.model, view.time, self.frame) {
+                    continue;
+                }
+
+                let Some(material) = self
+                    .model
+                    .materials
+                    .get(geoset.property.material_id as usize)
+                else {
+                    continue;
+                };
+
+                if context
+                    .render_phase
+                    .includes_pass(false, translucent_instance)
+                    && material.has_pass(false)
+                {
+                    self.model.render_geoset(
+                        context,
+                        global_matrix,
+                        &mut state,
+                        geoset,
+                        Some(material),
+                        view.fog_enable,
+                        self.team,
+                        self.skin,
+                        self.skin_slot,
+                        force_unshaded,
+                        view.time,
+                        self.frame,
+                        tint,
+                        blended_pass,
+                    );
+                }
+            }
+        }
+
+        let mut draw_order = Vec::with_capacity(self.model.geosets.len());
+        for geoset in self.model.geosets.iter() {
+            if !geoset.is_visible(self.model, view.time, self.frame) {
+                continue;
+            }
+            let material = self
+                .model
+                .materials
+                .get(geoset.property.material_id as usize);
+
+            if let Some(material) = material
+                && !material.has_pass(true)
+            {
+                continue;
+            }
+
+            draw_order.push(GeosetDrawOrder {
+                geoset,
+                material,
+                priority: if let Some(material) = material {
+                    material.priority
+                } else {
+                    0
+                },
+                layer: 0,
+                order: draw_order.len(),
+            })
+        }
+
+        draw_order.sort_by(|lhs, rhs| {
+            let left_blend = lhs
+                .material
+                .and_then(|material| material.layers.get(lhs.layer as usize))
+                .map_or(shared::BlendMode::None as u32, |layer| {
+                    layer.blend_mode as u32
+                });
+            let right_blend = rhs
+                .material
+                .and_then(|material| material.layers.get(rhs.layer as usize))
+                .map_or(shared::BlendMode::None as u32, |layer| {
+                    layer.blend_mode as u32
+                });
+
+            lhs.priority
+                .cmp(&rhs.priority)
+                .then_with(|| left_blend.cmp(&right_blend))
+                .then_with(|| lhs.order.cmp(&rhs.order))
+        });
+
+        for draw in draw_order.into_iter() {
+            self.model.render_geoset(
+                context,
+                global_matrix,
+                &mut state,
+                draw.geoset,
+                draw.material,
+                view.fog_enable,
+                self.team,
+                self.skin,
+                self.skin_slot,
+                force_unshaded,
+                view.time,
+                self.frame,
+                tint,
+                true,
+            );
+        }
+    }
+}
+
+pub struct GeosetDrawOrder<'s> {
+    pub geoset: &'s Geoset,
+    pub material: Option<&'s Material>,
+    pub priority: u32,
+    pub layer: u32,
+    pub order: usize,
 }
 
 #[cfg(test)]

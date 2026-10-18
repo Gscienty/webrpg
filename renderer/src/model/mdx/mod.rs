@@ -52,7 +52,11 @@ pub use texture::Texture;
 pub use texture_animation::TextureAnimation;
 use web_sys::{WebGl2RenderingContext, WebGlBuffer};
 
-use crate::{buffer, context, shader};
+use crate::{
+    buffer,
+    context::{self, Context},
+    shader::{self, ModelState},
+};
 
 const ATCH: u32 = u32::from_le_bytes(*b"ATCH");
 const BONE: u32 = u32::from_le_bytes(*b"BONE");
@@ -192,6 +196,7 @@ pub struct Model {
 
     pub vbo: WebGlBuffer,
     pub ibo: WebGlBuffer,
+    pub uvbuffer: Option<WebGlBuffer>,
 }
 
 impl Model {
@@ -293,6 +298,7 @@ impl Model {
             .map(|node| (node.object_id, sync::Arc::clone(node)))
             .collect();
 
+        // calc bounds
         let mut min = [0_f32; 3];
         let mut max = [0_f32; 3];
         for vertex in mdx_geosets.iter().flat_map(|geoset| &geoset.vertices) {
@@ -301,6 +307,21 @@ impl Model {
                 max[axis] = max[axis].max(vertex[axis]);
             }
         }
+        let bounds = Bounds {
+            radius: (0..3).map(|axis| max[axis] - min[axis]).fold(0., f32::max),
+            box_: (
+                (min[0], min[1], min[2]).into(),
+                (max[0], max[1], max[2]).into(),
+            )
+                .into(),
+        };
+
+        let uvcount = mdx_geosets.iter().fold(0, |acc, geoset| {
+            if geoset.texcoord.is_empty() {
+                return acc;
+            }
+            acc + ((geoset.texcoord.len() - 1) * geoset.vertices.len())
+        });
 
         let vbo = context
             .gl
@@ -313,17 +334,52 @@ impl Model {
             .ok_or(shader::Error::CreateBufferFailed)
             .map_err(io::Error::other)?;
 
-        let mut index_offset = 0;
+        let uvbuffer = if uvcount != 0 {
+            let uvbuffer = context
+                .gl
+                .create_buffer()
+                .ok_or(shader::Error::CreateBufferFailed)
+                .map_err(io::Error::other)?;
+
+            Some(uvbuffer)
+        } else {
+            None
+        };
+
+        let mut index_base = 0;
+        let mut vertex_base = 0;
+        let mut uvbase = 0;
         let mut geosets = Vec::with_capacity(mdx_geosets.len());
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
+        let mut uvs = Vec::with_capacity(uvcount);
         for geoset in mdx_geosets {
-            let (geoset, vertices_chunk, indices_chunk) =
-                Geoset::pack_geometry(&context.gl, &ibo, geoset, index_offset)
-                    .map_err(io::Error::other)?;
-            geosets.push(geoset);
+            uvs.extend(
+                geoset
+                    .texcoord
+                    .iter()
+                    .skip(1)
+                    .flat_map(|channel| channel.iter().copied()),
+            );
+            let (geoset, vertices_chunk, indices_chunk) = Geoset::pack_geometry(
+                &context.gl,
+                &vbo,
+                &ibo,
+                uvbuffer.as_ref(),
+                geoset,
+                vertex_base,
+                index_base,
+                uvbase,
+            )
+            .map_err(io::Error::other)?;
 
-            index_offset += indices_chunk.len();
+            index_base += indices_chunk.len();
+            vertex_base += vertices_chunk.len();
+            if !geoset.property.texcoord.is_empty() {
+                uvbase += (geoset.property.texcoord.len() - 1) * geoset.property.vertices.len();
+            }
+
+            geosets.push(geoset);
 
             vertices.extend(vertices_chunk);
             indices.extend(indices_chunk);
@@ -337,6 +393,23 @@ impl Model {
             buffer::Vertices::from(vertices).as_bytes(),
             WebGl2RenderingContext::STATIC_DRAW,
         );
+
+        if let Some(uvbuffer) = &uvbuffer {
+            context
+                .gl
+                .bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(uvbuffer));
+            let uv_bytes = unsafe {
+                std::slice::from_raw_parts(
+                    uvs.as_ptr().cast::<u8>(),
+                    std::mem::size_of_val(uvs.as_slice()),
+                )
+            };
+            context.gl.buffer_data_with_u8_array(
+                WebGl2RenderingContext::ARRAY_BUFFER,
+                uv_bytes,
+                WebGl2RenderingContext::STATIC_DRAW,
+            );
+        }
 
         context
             .gl
@@ -352,15 +425,6 @@ impl Model {
             index_bytes,
             WebGl2RenderingContext::STATIC_DRAW,
         );
-
-        let bounds = Bounds {
-            radius: (0..3).map(|axis| max[axis] - min[axis]).fold(0., f32::max),
-            box_: (
-                (min[0], min[1], min[2]).into(),
-                (max[0], max[1], max[2]).into(),
-            )
-                .into(),
-        };
 
         Ok(Self {
             version: version.ok_or_else(|| {
@@ -390,6 +454,7 @@ impl Model {
             bounds,
             vbo,
             ibo,
+            uvbuffer,
         })
     }
 
@@ -397,6 +462,24 @@ impl Model {
         self.sequences
             .iter()
             .find(|&seq| seq.interval[0] <= time && time < seq.interval[1])
+    }
+
+    pub fn remap_animation(&self, frame: u32, suffix: &str) -> u32 {
+        let Some(source) = self.find_sequence_at_time(frame) else {
+            return frame;
+        };
+        let name = format!("{} {suffix}", source.name);
+        let Some(target) = self
+            .sequences
+            .iter()
+            .find(|sequence| sequence.name.eq_ignore_ascii_case(&name))
+        else {
+            return frame;
+        };
+
+        target.interval[0]
+            + (frame - source.interval[0])
+                .min((target.interval[1] - target.interval[0]).saturating_sub(1))
     }
 
     pub fn select_ui_sequence(&self, animation: &str) -> Option<&Sequence> {
@@ -453,5 +536,336 @@ impl Model {
         }
 
         selected.or_else(|| self.sequences.first())
+    }
+
+    pub fn collect_model_lights(
+        &self,
+        global_matrices: &BTreeMap<u32, shared::math3::Matrix4>,
+        model_matrix: shared::math3::Matrix4,
+        global_time: u32,
+        frame: u32,
+    ) -> Vec<shader::ModelLight> {
+        self.lights
+            .iter()
+            .filter_map(|light| {
+                light.evaluate_light(
+                    self,
+                    global_matrices,
+                    model_matrix,
+                    global_time,
+                    frame,
+                    true,
+                )
+            })
+            .collect()
+    }
+
+    pub fn bone_matrices(
+        &self,
+        lerpfrac: f32,
+        model_matrix: shared::math3::Matrix4,
+        global_time: u32,
+        frame1: u32,
+        frame0: u32,
+    ) -> BTreeMap<u32, shared::math3::Matrix4> {
+        let local_matrices: BTreeMap<_, _> = self
+            .nodes
+            .iter()
+            .map(|(&id, node)| {
+                (
+                    id,
+                    self.calculate_node_matrix(lerpfrac, node, global_time, frame1, frame0),
+                )
+            })
+            .collect();
+
+        let mut global_matrices = BTreeMap::new();
+        for node in self.nodes.values() {
+            self.get_node_global_matrix(&local_matrices, &mut global_matrices, node, model_matrix);
+        }
+        global_matrices
+    }
+
+    fn get_node_global_matrix(
+        &self,
+        local_matrices: &BTreeMap<u32, shared::math3::Matrix4>,
+        global_matrices: &mut BTreeMap<u32, shared::math3::Matrix4>,
+        node: &Node,
+        model_matrix: shared::math3::Matrix4,
+    ) -> shared::math3::Matrix4 {
+        if let Some(&matrix) = global_matrices.get(&node.object_id) {
+            return matrix;
+        }
+
+        let local_matrix = local_matrices
+            .get(&node.object_id)
+            .copied()
+            .unwrap_or_default();
+        let parent = self.nodes.get(&node.parent_id);
+        let mut global_matrix = if let Some(parent) = parent {
+            self.get_node_global_matrix(local_matrices, global_matrices, parent, model_matrix)
+                * local_matrix
+        } else {
+            local_matrix
+        };
+
+        if node.flags & 8 != 0 {
+            let pivot = self
+                .pivots
+                .get(node.object_id as usize)
+                .copied()
+                .unwrap_or_default();
+            let transformed_pivot = global_matrix * pivot;
+
+            if let Some(parent) = parent {
+                let parent_matrix = self.get_node_global_matrix(
+                    local_matrices,
+                    global_matrices,
+                    parent,
+                    model_matrix,
+                );
+                let rotation = shared::math3::Quaternion::from(parent_matrix);
+                let inverse_rotation = -rotation;
+                global_matrix = shared::math3::Matrix4::from_rotation_origin(
+                    inverse_rotation,
+                    transformed_pivot,
+                ) * global_matrix;
+            }
+
+            let view_matrix = shared::math3::Matrix4::identity().rotate(
+                shared::math3::Vector3::from((30_f32.to_radians(), 0., 90_f32.to_radians())),
+                shared::math3::RotationOrder::XYZ,
+            ) * model_matrix;
+            let rotation = shared::math3::Quaternion::from(view_matrix);
+            let inverse_rotation = -rotation;
+            global_matrix =
+                shared::math3::Matrix4::from_rotation_origin(inverse_rotation, transformed_pivot)
+                    * global_matrix;
+        }
+
+        global_matrices.insert(node.object_id, global_matrix);
+        global_matrix
+    }
+
+    fn calculate_node_matrix(
+        &self,
+        lerpfrac: f32,
+        node: &Node,
+        global_time: u32,
+        frame1: u32,
+        frame0: u32,
+    ) -> shared::math3::Matrix4 {
+        let mut translation = shared::math3::Vector3::default();
+        let mut rotation = shared::math3::Quaternion::default();
+        let mut scale = shared::math3::Vector3::from((1., 1., 1.));
+        let pivot = self
+            .pivots
+            .get(node.object_id as usize)
+            .copied()
+            .unwrap_or_default();
+
+        if frame0 != frame1 {
+            if let Some(track) = &node.translation {
+                let left = track
+                    .get_value(self, global_time, frame0)
+                    .unwrap_or_default();
+                let right = track
+                    .get_value(self, global_time, frame1)
+                    .unwrap_or_default();
+                translation = shared::math3::Vector3::lerp(left, right, lerpfrac);
+            }
+            if let Some(track) = &node.rotation {
+                let left = track
+                    .get_value(self, global_time, frame0)
+                    .unwrap_or_default();
+                let right = track
+                    .get_value(self, global_time, frame1)
+                    .unwrap_or_default();
+                rotation = shared::math3::Quaternion::slerp(left, right, lerpfrac);
+            }
+            if let Some(track) = &node.scale {
+                let left = track
+                    .get_value(self, global_time, frame0)
+                    .unwrap_or((1., 1., 1.).into());
+                let right = track
+                    .get_value(self, global_time, frame1)
+                    .unwrap_or((1., 1., 1.).into());
+                scale = shared::math3::Vector3::lerp(left, right, lerpfrac);
+            }
+        } else {
+            translation = node
+                .translation
+                .as_ref()
+                .and_then(|track| track.get_value(self, global_time, frame1))
+                .unwrap_or_default();
+            rotation = node
+                .rotation
+                .as_ref()
+                .and_then(|track| track.get_value(self, global_time, frame1))
+                .unwrap_or_default();
+            scale = node
+                .scale
+                .as_ref()
+                .and_then(|track| track.get_value(self, global_time, frame1))
+                .unwrap_or((1., 1., 1.).into());
+        }
+
+        match (
+            node.translation.is_some(),
+            node.rotation.is_some(),
+            node.scale.is_some(),
+        ) {
+            (false, false, false) => shared::math3::Matrix4::identity(),
+            (true, false, false) => shared::math3::Matrix4::from_translation(translation),
+            (false, true, false) => shared::math3::Matrix4::from_rotation_origin(rotation, pivot),
+            _ => shared::math3::Matrix4::from_rotation_translation_scale_origin(
+                rotation,
+                translation,
+                scale,
+                pivot,
+            ),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_geoset(
+        &self,
+        context: &Context,
+        global_matrix: &BTreeMap<u32, shared::math3::Matrix4>,
+        state: &mut ModelState,
+        geoset: &Geoset,
+        material: Option<&Material>,
+        fog_enable: bool,
+        team: u32,
+        override_texture: Option<&'_ crate::texture::Texture>,
+        override_slot: u32,
+        force_unshaded: bool,
+        global_time: u32,
+        frame: u32,
+        tint: shared::math3::Vector4,
+        blended_pass: bool,
+    ) {
+        if let Some(material) = material
+            && !material.has_pass(blended_pass)
+        {
+            return;
+        }
+        let geoset_color = geoset
+            .property
+            .evaluate_geoset_color(self, global_time, frame);
+        state.geoset_color = (
+            geoset_color[0] * tint[0],
+            geoset_color[1] * tint[1],
+            geoset_color[2] * tint[2],
+            geoset_color[3] * tint[3],
+        )
+            .into();
+        state.bind_geoset_matrix_palette(global_matrix, self, geoset);
+        state.layer_alpha = 1.;
+
+        if let Some(material) = material {
+            for (id, layer) in material.layers.iter().enumerate() {
+                if layer.is_blended() != blended_pass {
+                    continue;
+                }
+
+                context.gl.enable(WebGl2RenderingContext::DEPTH_TEST);
+                state.alpha_key = false;
+
+                if self.cameras.is_empty() {
+                    context.gl.disable(WebGl2RenderingContext::CULL_FACE);
+                } else {
+                    context.gl.enable(WebGl2RenderingContext::CULL_FACE);
+                    context.gl.cull_face(WebGl2RenderingContext::BACK);
+                }
+                context.gl.depth_mask(true);
+
+                if !layer.set_layer_blend(context, state, id) {
+                    continue;
+                }
+
+                if tint[3] < 1. - f32::EPSILON
+                    && matches!(
+                        layer.blend_mode,
+                        shared::BlendMode::None | shared::BlendMode::AlphaKey
+                    )
+                {
+                    state.alpha_key = false;
+                    context.set_alpha_key_state(false);
+                    context.gl.enable(WebGl2RenderingContext::BLEND);
+                    context.gl.blend_func(
+                        WebGl2RenderingContext::SRC_ALPHA,
+                        WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
+                    );
+                    context.gl.depth_mask(false);
+                }
+
+                layer.apply_flags(context);
+                state.unshaded = force_unshaded || layer.flags & GeoFlag::Unshared as u32 != 0;
+                state.fog_enable = fog_enable
+                    && layer.flags & GeoFlag::Unfogged as u32 == 0
+                    && matches!(
+                        layer.blend_mode,
+                        shared::BlendMode::None
+                            | shared::BlendMode::AddAlpha
+                            | shared::BlendMode::Blend
+                    );
+                let alpha = layer.evaluate_layer_alpha(material, self, global_time, frame);
+                if alpha < f32::EPSILON {
+                    continue;
+                }
+                state.layer_alpha = alpha;
+                state.uv_matrix = layer.bind_texture_animation(self, global_time, frame);
+                let texture_id = layer.evaluate_layer_texture_id(self, global_time, frame);
+                let Some(model_texture) = self.textures.get(texture_id) else {
+                    continue;
+                };
+
+                let Some(texture) = context.get_texture(
+                    self,
+                    team as usize,
+                    texture_id,
+                    model_texture.replaceable_id,
+                    override_texture,
+                    override_slot,
+                ) else {
+                    continue;
+                };
+                texture.bind(&context.gl, 0);
+
+                let Some(vao) = geoset.vaos.get(layer.coord_id as usize) else {
+                    continue;
+                };
+                context.gl.bind_vertex_array(Some(vao));
+                context.render_stats.borrow_mut().draw(
+                    WebGl2RenderingContext::TRIANGLES,
+                    geoset.property.triangles.len(),
+                    1,
+                );
+                if context
+                    .shaders
+                    .apply_model(&context.gl, false, state)
+                    .is_err()
+                {
+                    continue;
+                }
+                context.gl.draw_elements_with_i32(
+                    WebGl2RenderingContext::TRIANGLES,
+                    geoset.property.triangles.len() as i32,
+                    WebGl2RenderingContext::UNSIGNED_INT,
+                    geoset.index_offset as i32,
+                );
+            }
+        }
+
+        context.gl.enable(WebGl2RenderingContext::DEPTH_TEST);
+        context.gl.enable(WebGl2RenderingContext::CULL_FACE);
+        context.set_alpha_key_state(false);
+        context.gl.cull_face(WebGl2RenderingContext::BACK);
+        context.gl.depth_mask(true);
+        state.alpha_key = false;
+        state.unshaded = force_unshaded;
+        state.layer_alpha = 1.;
+        state.geoset_color = (1., 1., 1., 1.).into();
     }
 }

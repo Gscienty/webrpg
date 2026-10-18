@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut, Mul};
 
-use super::{Quaternion, RotationOrder, Vector3, Vector4};
+use super::{Matrix3, Quaternion, RotationOrder, Vector3, Vector4};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub struct Matrix4 {
@@ -170,6 +170,18 @@ impl Matrix4 {
         result
     }
 
+    pub fn normal(&self) -> Matrix3 {
+        let inverse = self.inverse();
+
+        Matrix3 {
+            v: [
+                Vector3::from((inverse[0][0], inverse[0][1], inverse[0][2])),
+                Vector3::from((inverse[1][0], inverse[1][1], inverse[1][2])),
+                Vector3::from((inverse[2][0], inverse[2][1], inverse[2][2])),
+            ],
+        }
+    }
+
     pub fn rotate4(self, quat: Vector4) -> Self {
         let x2 = quat.x + quat.x;
         let y2 = quat.y + quat.y;
@@ -257,5 +269,22 @@ impl Matrix4 {
                 Vector4::from((-right.dot(eye), -up.dot(eye), forward.dot(eye), 1.)),
             ],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normal_returns_inverse_upper_left_matrix() {
+        let normal = Matrix4::identity()
+            .translate((3., 4., 5.).into())
+            .scale((2., 4., 5.).into())
+            .normal();
+
+        assert_eq!(normal[0], (0.5, 0., 0.).into());
+        assert_eq!(normal[1], (0., 0.25, 0.).into());
+        assert_eq!(normal[2], (0., 0., 0.2).into());
     }
 }
