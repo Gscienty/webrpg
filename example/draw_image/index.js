@@ -50,6 +50,8 @@ async function play(files, extension, render, startIndex = 0) {
 function bindDirectoryInput(selector, extension, render) {
   const input = document.querySelector(selector);
   input.addEventListener("change", async () => {
+    playbackId += 1;
+    activePlaylist = null;
     const files = Array.from(input.files)
       .filter((file) => file.name.toLowerCase().endsWith(extension))
       .sort((left, right) =>
@@ -77,7 +79,7 @@ jumpButton.addEventListener("click", () => {
   }
 
   const position = Number.parseInt(positionInput.value, 10);
-  if (position < 1 || position > activePlaylist.files.length) {
+  if (!Number.isInteger(position) || position < 1 || position > activePlaylist.files.length) {
     status.textContent = `图片序号应在 1 到 ${activePlaylist.files.length} 之间`;
     return;
   }

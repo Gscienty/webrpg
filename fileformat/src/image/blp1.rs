@@ -190,9 +190,10 @@ impl InternalBLPInfos {
             BLPFormat::PalettedAlpha8 => pixel_count.checked_mul(2),
             _ => None,
         };
-        if expected_size.is_some_and(|expected| chunk.len() != expected) {
-            return Err(Error::MipOutOfBounds);
-        }
+        let chunk = match expected_size {
+            Some(expected) => chunk.get(..expected).ok_or(Error::MipOutOfBounds)?,
+            None => chunk,
+        };
 
         match self.format() {
             BLPFormat::Jpeg => self.convert_jpeg(width, chunk),
@@ -375,12 +376,12 @@ mod tests {
         {
             buffer.extend_from_slice(&value.to_le_bytes());
         }
-        for value in [3_u32].into_iter().chain(std::iter::repeat_n(0, 15)) {
+        for value in [4_u32].into_iter().chain(std::iter::repeat_n(0, 15)) {
             buffer.extend_from_slice(&value.to_le_bytes());
         }
         buffer.resize(mip_offset, 0);
         buffer[HEADER_SIZE + 4..HEADER_SIZE + 8].copy_from_slice(&[30, 20, 10, 40]);
-        buffer.extend_from_slice(&[1, 1, 0xf0]);
+        buffer.extend_from_slice(&[1, 1, 0xf0, 0]);
 
         let blp = match InternalBLPInfos::load(&buffer) {
             Ok(blp) => blp,

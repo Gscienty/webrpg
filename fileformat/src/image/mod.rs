@@ -70,16 +70,22 @@ impl<'s> Image<'s> {
 impl RawImage {
     fn load_blp1(raw: &[u8]) -> Result<Vec<Self>, Error> {
         let info = blp1::InternalBLPInfos::load(raw)?;
+        let mut images = Vec::with_capacity(info.mip_level());
 
-        (0..info.mip_level())
-            .map(|level| {
-                info.convert(level, raw).map(|pixels| RawImage {
-                    width: info.width(level),
-                    height: info.height(level),
-                    pixels,
-                })
-            })
-            .collect()
+        for level in 0..info.mip_level() {
+            let pixels = match info.convert(level, raw) {
+                Ok(pixels) => pixels,
+                Err(Error::InvalidJpegData) if !images.is_empty() => break,
+                Err(error) => return Err(error),
+            };
+            images.push(Self {
+                width: info.width(level),
+                height: info.height(level),
+                pixels,
+            });
+        }
+
+        Ok(images)
     }
 
     fn load_blp2(raw: &[u8]) -> Result<Vec<Self>, Error> {
