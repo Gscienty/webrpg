@@ -4,14 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bitflags = "2"
-js-sys = "0.3"
-jpeg-decoder = { version = "0.3", default-features = false, features = [
-  "platform_independent",
-] }
 shared = { path = "../shared" }
-webrpg-mpq = { path = "../mpq" }
-strum = { version = "0.28", features = ["derive"] }
+fileformat = { path = "../fileformat" }
 web-sys = { version = "0.3", features = [
   "console",
   "WebGl2RenderingContext",
@@ -28,4 +22,3 @@ web-sys = { version = "0.3", features = [
   "WebGlTransformFeedback",
   "WebGlContextAttributes",
 ] }
-fontdue = "0.9.4"

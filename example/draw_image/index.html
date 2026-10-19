@@ -7,19 +7,26 @@
     <style>
       body { margin: 0; min-height: 100vh; display: grid; place-content: center; gap: 1rem; color: #e4e4e7; background: #18181b; font: 16px system-ui; }
       .inputs { display: flex; flex-wrap: wrap; gap: 1rem; }
+      .controls { display: flex; align-items: center; gap: 1rem; }
+      input[type="number"] { width: 5rem; }
       canvas { width: min(80vw, 768px); height: min(80vw, 768px); border: 1px solid #52525b; image-rendering: pixelated; }
       #status { min-height: 1.5em; color: #a1a1aa; }
     </style>
   </head>
   <body>
     <div class="inputs">
-      <label>BLP：<input id="blp-file" type="file" accept=".blp" /></label>
-      <label>DDS：<input id="dds-file" type="file" accept=".dds" /></label>
-      <label>PCX：<input id="pcx-file" type="file" accept=".pcx" /></label>
-      <label>TGA：<input id="tga-file" type="file" accept=".tga" /></label>
+      <label>BLP 目录：<input id="blp-file" type="file" webkitdirectory multiple /></label>
+      <label>DDS 目录：<input id="dds-file" type="file" webkitdirectory multiple /></label>
+      <label>PCX 目录：<input id="pcx-file" type="file" webkitdirectory multiple /></label>
+      <label>TGA 目录：<input id="tga-file" type="file" webkitdirectory multiple /></label>
+    </div>
+    <div class="controls">
+      <label>轮播间隔：<input id="interval" type="number" min="0" step="0.1" value="3" /> 秒</label>
+      <label>图片序号：<input id="position" type="number" min="1" value="1" /></label>
+      <button id="jump" type="button">跳转</button>
     </div>
     <canvas id="canvas" width="768" height="768"></canvas>
-    <div id="status">请选择 BLP、DDS、PCX 或 TGA 图片</div>
+    <div id="status">请选择 BLP、DDS、PCX 或 TGA 图片目录</div>
     <script type="module" src="./index.js"></script>
   </body>
 </html>
