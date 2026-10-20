@@ -41,7 +41,11 @@ impl<'s> Event<'s> {
         Ok(Self { node, event_track })
     }
 
-    pub fn read_list(model: &'s Model, reader: &mut impl Read, size: usize) -> io::Result<Vec<Self>> {
+    pub fn read_list(
+        model: &'s Model,
+        reader: &mut impl Read,
+        size: usize,
+    ) -> io::Result<Vec<Self>> {
         let mut bytes = vec![0; size];
         reader.read_exact(&mut bytes)?;
         let mut cursor = Cursor::new(bytes.as_slice());

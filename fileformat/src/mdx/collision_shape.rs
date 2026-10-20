@@ -1,7 +1,4 @@
-use std::{
-    io::{self, Read},
-    sync,
-};
+use std::io::{self, Read};
 
 use shared::math3;
 
@@ -71,7 +68,11 @@ impl<'s> CollisionShape<'s> {
         })
     }
 
-    pub fn read_list(model: &'s Model, reader: &mut impl Read, size: usize) -> io::Result<Vec<Self>> {
+    pub fn read_list(
+        model: &'s Model,
+        reader: &mut impl Read,
+        size: usize,
+    ) -> io::Result<Vec<Self>> {
         let mut payload = reader.take(size as u64);
         let mut values = Vec::new();
         while payload.limit() > 0 {

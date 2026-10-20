@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     io::{self, Read},
     mem::size_of,
 };
@@ -108,7 +107,11 @@ impl<'s> Light<'s> {
         Ok(result)
     }
 
-    pub fn read_list(model: &'s Model, reader: &mut impl Read, size: usize) -> io::Result<Vec<Self>> {
+    pub fn read_list(
+        model: &'s Model,
+        reader: &mut impl Read,
+        size: usize,
+    ) -> io::Result<Vec<Self>> {
         let mut payload = reader.take(size as u64);
         let mut values = Vec::new();
         while payload.limit() > 0 {

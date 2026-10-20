@@ -21,7 +21,11 @@ impl<'s> Bone<'s> {
         })
     }
 
-    pub fn read_list(model: &'s Model, reader: &mut impl Read, size: usize) -> io::Result<Vec<Self>> {
+    pub fn read_list(
+        model: &'s Model,
+        reader: &mut impl Read,
+        size: usize,
+    ) -> io::Result<Vec<Self>> {
         let mut payload = reader.take(size as u64);
         let mut values = Vec::new();
         while payload.limit() > 0 {
