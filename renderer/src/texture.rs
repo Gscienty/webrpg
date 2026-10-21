@@ -1,6 +1,8 @@
-use fileformat::image::{CompressImage, CompressImageFormat, Error, Image, RawImage};
+use fileformat::image::{CompressImage, CompressImageFormat, Image, RawImage};
 use shared::color::Color32;
 use web_sys::{WebGl2RenderingContext, WebGlTexture, WebglCompressedTextureS3tc};
+
+use crate::error::Error;
 
 pub struct Texture {
     gltex: WebGlTexture,

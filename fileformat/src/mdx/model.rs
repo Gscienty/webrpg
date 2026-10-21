@@ -99,6 +99,7 @@ impl<'s> Model<'s> {
                 ModelChunk::Cameras(value) => model.cameras = value,
             }
         }
+        unsafe { Self::assign_geoset_animations(model_ptr)? };
 
         let parsed = unsafe { &*model_ptr };
         let nodes = parsed.indexed_nodes()?;
@@ -107,6 +108,28 @@ impl<'s> Model<'s> {
         unsafe { std::ptr::addr_of_mut!((*model_ptr).bounds).replace(bounds) };
 
         Ok(model)
+    }
+
+    unsafe fn assign_geoset_animations(model_ptr: *mut Self) -> io::Result<()> {
+        let animation_count = unsafe { (*model_ptr).geoset_animations.len() };
+        for animation_index in 0..animation_count {
+            let animation_ptr =
+                unsafe { (*model_ptr).geoset_animations.as_ptr().add(animation_index) };
+            let geoset_index = unsafe { (*animation_ptr).geoset_id as usize };
+            let geoset_count = unsafe { (*model_ptr).geosets.len() };
+            if geoset_index >= geoset_count {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid geoset animation geoset id",
+                ));
+            }
+
+            let geoset_ptr = unsafe { (*model_ptr).geosets.as_mut_ptr().add(geoset_index) };
+            unsafe {
+                std::ptr::addr_of_mut!((*geoset_ptr).anim).replace(Some(&*animation_ptr));
+            }
+        }
+        Ok(())
     }
 
     fn indexed_nodes(&self) -> io::Result<BTreeMap<u32, NodeIndex>> {
@@ -312,5 +335,46 @@ mod tests {
 
         let error = Model::read(&mut Cursor::new(bytes)).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn assigns_geoset_animation() {
+        let mut model = Box::pin(Model::default());
+        let model_ptr = {
+            let model = unsafe { Pin::as_mut(&mut model).get_unchecked_mut() };
+            model.geosets.push(Geoset {
+                vertices: Vec::new(),
+                normals: Vec::new(),
+                texcoord: Vec::new(),
+                primitive_types: Vec::new(),
+                primitive_counts: Vec::new(),
+                triangles: Vec::new(),
+                vertex_groups: Vec::new(),
+                matrix_group_sizes: Vec::new(),
+                matrices: Vec::new(),
+                material_id: 0,
+                group: 0,
+                selectable: 0,
+                default_bounds: Bounds::default(),
+                bounds: Vec::new(),
+                anim: None,
+            });
+            model.geoset_animations.push(GeosetAnimation {
+                alpha: 1.0,
+                flags: 0,
+                color: (1.0, 1.0, 1.0).into(),
+                geoset_id: 0,
+                geoset_alphas: None,
+                geoset_colors: None,
+            });
+            model as *mut Model
+        };
+
+        unsafe { Model::assign_geoset_animations(model_ptr).unwrap() };
+
+        assert!(std::ptr::eq(
+            model.geosets[0].anim.unwrap(),
+            &model.geoset_animations[0]
+        ));
     }
 }
