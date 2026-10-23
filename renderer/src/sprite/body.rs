@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use fileformat::mdx;
 use shared::{
     color,
@@ -7,7 +9,12 @@ use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlVertexArrayObject};
 
 use crate::{
     Error, shader,
-    sprite::{bound::Bound, render_params::RenderParams},
+    sprite::{
+        bound::Bound,
+        material::{self, Material},
+        render_params::RenderParams,
+        utils,
+    },
 };
 
 pub struct Body<'s> {
@@ -21,12 +28,21 @@ pub struct Body<'s> {
     geosets: Vec<Geoset<'s>>,
 }
 
+pub struct BodyRenderParams<'a, 's> {
+    pub model: &'s mdx::Model<'s>,
+    pub bone_matrices: &'a BTreeMap<u32, math3::Matrix4>,
+    pub textures: &'a [usize],
+    pub transform: math3::Matrix4,
+}
+
 const MAX_SKIN_BONES: usize = 4;
 
 struct Geoset<'s> {
     vertex_array: Vec<WebGlVertexArrayObject>,
+    triangles_count: usize,
     index_bytes_offset: usize,
     animation: Option<&'s mdx::GeosetAnimation<'s>>,
+    material: Material<'s>,
     palette: Vec<u32>,
 }
 
@@ -65,6 +81,10 @@ impl<'s> Body<'s> {
         let mut uvs: Vec<shared::math3::Vector2> = Vec::new();
 
         for mdx_geoset in model.geosets.iter() {
+            let Some(material) = model.materials.get(mdx_geoset.material_id as usize) else {
+                continue;
+            };
+
             uvs.extend(
                 mdx_geoset
                     .texcoord
@@ -76,6 +96,7 @@ impl<'s> Body<'s> {
             let (geoset, vertices_chunk, indices_chunk) = Geoset::new(
                 gl,
                 mdx_geoset,
+                material,
                 &vertex_buffer,
                 &index_buffer,
                 uv_buffer.as_ref(),
@@ -150,22 +171,79 @@ impl<'s> Body<'s> {
     pub fn render(
         &self,
         gl: &WebGl2RenderingContext,
-        model: &'s mdx::Model<'_>,
-        param: &RenderParams<'_>,
-        transform: math3::Matrix4,
-    ) {
-        if !param.no_frustum_cull {
+        render_param: &RenderParams,
+        param: BodyRenderParams,
+    ) -> Result<(), Error> {
+        if !render_param.no_frustum_cull {
             let sphere = math3::Sphere3 {
-                center: transform * self.bound.cube.center(),
-                radius: self.bound.radius * param.scale,
+                center: param.transform * self.bound.cube.center(),
+                radius: self.bound.radius * render_param.scale,
             };
 
-            if !param.frustum.contains(sphere)
-                || param.frustum.contains((self.bound.cube, transform))
+            if !render_param.frustum.contains(sphere)
+                || !render_param
+                    .frustum
+                    .contains((self.bound.cube, param.transform))
             {
-                return;
+                return Ok(());
             }
         }
+
+        let (lights, lights_count) = pack_light(
+            param.model,
+            param.bone_matrices,
+            render_param.light,
+            param.transform,
+            render_param.global_time,
+            render_param.frame,
+        );
+
+        let tint: math3::Vector4 = (
+            render_param.tint.red as f32 / 255.,
+            render_param.tint.green as f32 / 255.,
+            render_param.tint.blue as f32 / 255.,
+            render_param.tint.alpha as f32 / 255.,
+        )
+            .into();
+        let translucent_instance = tint[3] < 1. - f32::EPSILON;
+
+        let state = shader::ModelState {
+            model: param.transform,
+            normal_matrix: param.transform.normal(),
+            unshaded: render_param.no_lighting,
+            view_projection: render_param.view_projection,
+            texture_matrix: render_param.texture,
+            light_matrix: render_param.light,
+            fog_enable: render_param.fog.is_some(),
+            fog_color: render_param.fog.map(|(color, _)| color).unwrap_or_default(),
+            fog_params: render_param.fog.map(|(_, range)| range).unwrap_or_default(),
+            lights,
+            lights_count,
+            layer_alpha: 1.,
+
+            ..Default::default()
+        };
+
+        for blended_pass in [false, true] {
+            if !render_param
+                .render_phase
+                .includes_pass(blended_pass, translucent_instance)
+            {
+                continue;
+            }
+
+            for geoset in self.geosets.iter() {
+                if !geoset.visible(render_param.global_time, render_param.frame) {
+                    continue;
+                }
+
+                if geoset.material.has_pass(blended_pass) {
+                    geoset.render(gl, &param, render_param, state.clone(), tint, blended_pass)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -174,6 +252,7 @@ impl<'s> Geoset<'s> {
     pub fn new(
         gl: &WebGl2RenderingContext,
         geoset: &'s mdx::Geoset<'s>,
+        material: &'s mdx::Material<'s>,
         vertex_buffer: &WebGlBuffer,
         index_buffer: &WebGlBuffer,
         uv_buffer: Option<&WebGlBuffer>,
@@ -223,13 +302,169 @@ impl<'s> Geoset<'s> {
         Ok((
             Self {
                 vertex_array,
+                triangles_count: geoset.triangles.len(),
                 index_bytes_offset: index_offset * size_of::<u16>(),
                 animation: geoset.anim,
+                material: Material::new(material),
                 palette,
             },
             vertices,
             indices,
         ))
+    }
+
+    pub fn render(
+        &self,
+        gl: &WebGl2RenderingContext,
+        body_param: &BodyRenderParams,
+        render_param: &RenderParams,
+
+        mut state: shader::ModelState,
+        tint: math3::Vector4,
+        blended_pass: bool,
+    ) -> Result<(), Error> {
+        if !self.material.has_pass(blended_pass) {
+            return Ok(());
+        }
+
+        let color = self.evaluate_color(render_param.global_time, render_param.frame);
+        state.geoset_color = (
+            color[0] * tint[0],
+            color[1] * tint[1],
+            color[2] * tint[2],
+            color[3] * tint[3],
+        )
+            .into();
+        state.bind_geoset_matrix_palette(body_param.bone_matrices, body_param.model, &self.palette);
+
+        for (id, layer) in self.material.layers().enumerate() {
+            if material::layer_is_blended(layer) != blended_pass {
+                continue;
+            }
+            gl.enable(WebGl2RenderingContext::DEPTH_TEST);
+            state.alpha_key = false;
+
+            if body_param.model.cameras.is_empty() {
+                gl.disable(WebGl2RenderingContext::CULL_FACE);
+            } else {
+                gl.enable(WebGl2RenderingContext::CULL_FACE);
+                gl.cull_face(WebGl2RenderingContext::BACK);
+            }
+            gl.depth_mask(true);
+
+            if !material::layer_set_blended(
+                gl,
+                id,
+                layer,
+                render_param.render_phase,
+                render_param.msaa_samples,
+                &mut state,
+            ) {
+                continue;
+            }
+
+            if tint[3] < 1. - f32::EPSILON
+                && matches!(
+                    layer.blend_mode,
+                    shared::BlendMode::None | shared::BlendMode::AlphaKey
+                )
+            {
+                state.alpha_key = false;
+                utils::set_alpha_key_state(
+                    gl,
+                    render_param.render_phase,
+                    render_param.msaa_samples,
+                    false,
+                );
+                gl.enable(WebGl2RenderingContext::BLEND);
+                gl.blend_func(
+                    WebGl2RenderingContext::SRC_ALPHA,
+                    WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
+                );
+                gl.depth_mask(false);
+            }
+
+            material::layer_apply_flags(gl, layer);
+
+            state.unshaded =
+                render_param.no_lighting || layer.flags & mdx::GeoFlag::Unshared as u32 != 0;
+            state.fog_enable = render_param.fog.is_some()
+                && layer.flags & mdx::GeoFlag::Unfogged as u32 == 0
+                && matches!(
+                    layer.blend_mode,
+                    shared::BlendMode::None
+                        | shared::BlendMode::AddAlpha
+                        | shared::BlendMode::Blend
+                );
+
+            let alpha = self.material.evaluate_layer_alpha(
+                layer,
+                render_param.global_time,
+                render_param.frame,
+            );
+            if alpha < f32::EPSILON {
+                continue;
+            }
+            state.layer_alpha = alpha;
+            state.uv_matrix = layer_bind_texture_animation(
+                body_param.model,
+                layer,
+                render_param.global_time,
+                render_param.frame,
+            );
+
+            let model_texture_id = evaluate_layer_texture_id(
+                layer,
+                body_param.model,
+                render_param.global_time,
+                render_param.frame,
+            );
+            let Some(model_texture) = body_param.model.textures.get(model_texture_id) else {
+                continue;
+            };
+            let Some(&texture_id) = body_param.textures.get(model_texture_id) else {
+                continue;
+            };
+
+            let Some(tex) = render_param.texture_set.get_texture(
+                texture_id,
+                render_param.team,
+                model_texture.replaceable_id,
+                render_param.override_texture,
+                render_param.override_slot,
+            ) else {
+                continue;
+            };
+            tex.bind(gl, 0);
+
+            let Some(vao) = self.vertex_array.get(layer.coord_id as usize) else {
+                continue;
+            };
+
+            gl.bind_vertex_array(Some(vao));
+
+            render_param.model_program.apply(gl, &state)?;
+
+            gl.draw_elements_with_i32(
+                WebGl2RenderingContext::TRIANGLES,
+                self.triangles_count as i32,
+                WebGl2RenderingContext::UNSIGNED_SHORT,
+                self.index_bytes_offset as i32,
+            );
+        }
+
+        gl.enable(WebGl2RenderingContext::DEPTH_TEST);
+        gl.enable(WebGl2RenderingContext::CULL_FACE);
+        utils::set_alpha_key_state(
+            gl,
+            render_param.render_phase,
+            render_param.msaa_samples,
+            false,
+        );
+        gl.cull_face(WebGl2RenderingContext::BACK);
+        gl.depth_mask(true);
+
+        Ok(())
     }
 
     pub fn visible(&self, global_time: u32, frame: u32) -> bool {
@@ -400,4 +635,228 @@ fn add_geoset_matrix_palette_entry(matrix_palette: &mut Vec<u32>, matrix_id: u32
     matrix_palette.push(matrix_id);
 
     (matrix_palette.len() - 1) as u8
+}
+
+fn evaluate_layer_texture_id(
+    layer: &mdx::Layer,
+    model: &mdx::Model,
+    global_time: u32,
+    frame: u32,
+) -> usize {
+    layer
+        .flipbook_tracks
+        .as_ref()
+        .and_then(|track| track.get_value(global_time, frame))
+        .filter(|&texture_id| (texture_id as usize) < model.textures.len())
+        .unwrap_or(layer.texture_id) as usize
+}
+
+fn layer_bind_texture_animation(
+    model: &mdx::Model,
+    layer: &mdx::Layer,
+    global_time: u32,
+    frame: u32,
+) -> math3::Matrix3 {
+    let mut translation = shared::math3::Vector3::default();
+    let mut rotation = shared::math3::Quaternion::default();
+    let mut scale = shared::math3::Vector3::from((1., 1., 1.));
+
+    if let Some(animation) = model.texture_animations.get(layer.transform_id as usize) {
+        if let Some(value) = animation
+            .translation
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+        {
+            translation = value;
+        }
+        if let Some(value) = animation
+            .rotation
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+        {
+            rotation = value;
+        }
+        if let Some(value) = animation
+            .scale
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+        {
+            scale = value;
+        }
+    }
+
+    if !translation[0].is_finite() || !translation[1].is_finite() {
+        translation = shared::math3::Vector3::default();
+    }
+    if !rotation.z.is_finite() || !rotation.w.is_finite() {
+        rotation = shared::math3::Quaternion::default();
+    }
+    if !scale[0].is_finite() || !scale[1].is_finite() {
+        scale = shared::math3::Vector3::from((1., 1., 1.));
+    }
+
+    let c = rotation.w * rotation.w - rotation.z * rotation.z;
+    let s = 2. * rotation.z * rotation.w;
+    let tx = scale[0] * (c * (translation[0] - 0.5) - s * (translation[1] - 0.5)) + 0.5;
+    let ty = scale[1] * (s * (translation[0] - 0.5) + c * (translation[1] - 0.5)) + 0.5;
+    let mut matrix = shared::math3::Matrix3::zero();
+    matrix[0] = (scale[0] * c, scale[1] * s, 0.).into();
+    matrix[1] = (-scale[0] * s, scale[1] * c, 0.).into();
+    matrix[2] = (tx, ty, 1.).into();
+    matrix
+}
+
+fn pack_light(
+    model: &mdx::Model,
+    bone_matrices: &BTreeMap<u32, math3::Matrix4>,
+    light_matrix: math3::Matrix4,
+    transform: math3::Matrix4,
+    global_time: u32,
+    frame: u32,
+) -> ([math3::Matrix4; 8], u32) {
+    let mut lighting = shader::ModelLighting::default();
+
+    lighting.lights.extend(collect_model_lights(
+        model,
+        bone_matrices,
+        transform,
+        global_time,
+        frame,
+    ));
+
+    let ambient = if lighting.lights.is_empty() { 0.35 } else { 0. };
+    lighting.ambient = (ambient, ambient, ambient).into();
+
+    if lighting.lights.is_empty() {
+        let directional = 0.75;
+        lighting.lights.push(shader::ModelLight {
+            dir: (
+                -light_matrix[0][2],
+                -light_matrix[1][2],
+                -light_matrix[2][2],
+            )
+                .into(),
+            color: (directional, directional, directional).into(),
+            intensity: 1.,
+            typ: shader::LightType::Direct,
+
+            ..Default::default()
+        });
+    }
+
+    let packed_lights = lighting.pack();
+    let lights_count = packed_lights.len().min(8);
+    let mut lights = [shared::math3::Matrix4::zero(); 8];
+    lights[..lights_count].copy_from_slice(&packed_lights[..lights_count]);
+
+    (lights, lights_count as u32)
+}
+
+fn collect_model_lights(
+    model: &mdx::Model,
+    bone_matrices: &BTreeMap<u32, math3::Matrix4>,
+    transform: math3::Matrix4,
+    global_time: u32,
+    frame: u32,
+) -> Vec<shader::ModelLight> {
+    model
+        .lights
+        .iter()
+        .filter_map(|light| {
+            evaluate_light(
+                model,
+                light,
+                bone_matrices,
+                transform,
+                global_time,
+                frame,
+                true,
+            )
+        })
+        .collect()
+}
+
+fn evaluate_light(
+    model: &mdx::Model,
+    light: &mdx::Light,
+    bone_matrices: &BTreeMap<u32, math3::Matrix4>,
+    transform: math3::Matrix4,
+    global_time: u32,
+    frame: u32,
+    visibility: bool,
+) -> Option<shader::ModelLight> {
+    let visibility = if visibility {
+        light
+            .visibility_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+            .unwrap_or(1.)
+    } else {
+        1.
+    };
+    if visibility < f32::EPSILON {
+        return None;
+    }
+
+    let color = light
+        .color_tracks
+        .as_ref()
+        .and_then(|track| track.get_value(global_time, frame))
+        .unwrap_or(light.color);
+    let intensity = light
+        .intensity_tracks
+        .as_ref()
+        .and_then(|track| track.get_value(global_time, frame))
+        .unwrap_or(light.intensity);
+    let ambient = light
+        .ambient_color_tracks
+        .as_ref()
+        .and_then(|track| track.get_value(global_time, frame))
+        .unwrap_or(light.ambient_color);
+    let ambient_intensity = light
+        .ambient_intensity_tracks
+        .as_ref()
+        .and_then(|track| track.get_value(global_time, frame))
+        .unwrap_or(light.ambient_intensity);
+    let atten_start = light
+        .attenuation_start_tracks
+        .as_ref()
+        .and_then(|track| track.get_value(global_time, frame))
+        .unwrap_or(light.attenuation_start);
+
+    let pivot = model
+        .pivots
+        .get(light.node.object_id as usize)
+        .copied()
+        .unwrap_or_default();
+    let mut local_pos = pivot;
+    let mut local_dir_target = pivot + shared::math3::Vector3::from((0., 0., -1.));
+    if let Some(&node_matrix) = bone_matrices.get(&light.node.object_id) {
+        local_pos = node_matrix * local_pos;
+        local_dir_target = node_matrix * local_dir_target;
+    }
+
+    let world_pos = transform * local_pos;
+    let world_dir_target = transform * local_dir_target;
+    let world_dir = world_dir_target - world_pos;
+    let world_dir = if world_dir.length_sq() < f32::EPSILON {
+        shared::math3::Vector3::from((0., 0., -1.))
+    } else {
+        world_dir.normalize()
+    };
+
+    Some(shader::ModelLight {
+        pos: world_pos,
+        dir: -world_dir,
+        color,
+        ambient,
+        atten_start,
+        intensity: intensity * visibility,
+        ambient_intensity: ambient_intensity * visibility,
+        typ: match light.type_ {
+            mdx::LightType::Omni => shader::LightType::Omni,
+            mdx::LightType::Direct => shader::LightType::Direct,
+            mdx::LightType::Ambient => shader::LightType::Ambient,
+        },
+    })
 }

@@ -8,11 +8,20 @@ pub struct Color32 {
 }
 
 impl Color32 {
-    pub fn white() -> Self {
+    pub const fn white() -> Self {
         Self {
             red: 255,
             green: 255,
             blue: 255,
+            alpha: 255,
+        }
+    }
+
+    pub const fn black() -> Self {
+        Self {
+            red: 0,
+            green: 0,
+            blue: 0,
             alpha: 255,
         }
     }

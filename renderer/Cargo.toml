@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 shared = { path = "../shared" }
 fileformat = { path = "../fileformat" }
+webrpg-mpq = { path = "../mpq" }
 web-sys = { version = "0.3", features = [
   "console",
   "WebGl2RenderingContext",

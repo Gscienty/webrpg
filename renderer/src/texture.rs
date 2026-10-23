@@ -1,5 +1,5 @@
 use fileformat::image::{CompressImage, CompressImageFormat, Image, RawImage};
-use shared::color::Color32;
+use shared::color::{self, Color32};
 use web_sys::{WebGl2RenderingContext, WebGlTexture, WebglCompressedTextureS3tc};
 
 use crate::error::Error;
@@ -23,6 +23,109 @@ impl Texture {
             Image::Raw(images) => Self::from_raw(gl, &images),
             Image::Compress(image) => Self::from_compressed(gl, &image),
         }
+    }
+
+    pub(crate) fn color(gl: &WebGl2RenderingContext, pixel: color::Color32) -> Result<Self, Error> {
+        Self::from_raw(
+            gl,
+            &[RawImage {
+                pixels: vec![pixel],
+                width: 1,
+                height: 1,
+            }],
+        )
+    }
+
+    pub(crate) fn placeholder(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        const SIZE: usize = 16;
+        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+            let (x, y) = (i % 16, i / 16);
+            if (x ^ y) & 1 != 0 {
+                Color32 {
+                    red: 255,
+                    green: 0,
+                    blue: 255,
+                    alpha: 255,
+                }
+            } else {
+                Color32 {
+                    red: 0,
+                    green: 0,
+                    blue: 0,
+                    alpha: 255,
+                }
+            }
+        });
+
+        Self::from_raw(
+            gl,
+            &[RawImage {
+                pixels: pixels.into(),
+                width: SIZE as u32,
+                height: SIZE as u32,
+            }],
+        )
+    }
+
+    pub(crate) fn shadow(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        const SIZE: usize = 64;
+        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+            let x = i % SIZE;
+            let y = i / SIZE;
+            let fx = (x as f32 + 0.5) / SIZE as f32 * 2. - 1.;
+            let fy = (y as f32 + 0.5) / SIZE as f32 * 2. - 1.;
+            let distance = (fx * fx + fy * fy).sqrt();
+            let alpha = 1. - smooth_step(0.25, 1., distance);
+
+            Color32 {
+                red: 255,
+                green: 255,
+                blue: 255,
+                alpha: (alpha * 255.) as u8,
+            }
+        });
+
+        Self::from_raw(
+            gl,
+            &[RawImage {
+                pixels: pixels.into(),
+                width: SIZE as u32,
+                height: SIZE as u32,
+            }],
+        )
+    }
+
+    pub(crate) fn loading(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        const SIZE: usize = 128;
+        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+            let x = i % SIZE;
+            let y = i / SIZE;
+            let fx = 1. - (x as f32 + 0.5) / SIZE as f32 * 2.;
+            let fy = (y as f32 + 0.5) / SIZE as f32 * 2. - 1.;
+            let distance = (fx * fx + fy * fy).sqrt();
+            let angle = (fy.atan2(fx) / std::f32::consts::TAU).rem_euclid(1.);
+            let outer = 0.92;
+            let inner = outer * 0.68;
+            let edge = 0.035;
+            let ring = smooth_step(inner - edge, inner, distance)
+                * (1. - smooth_step(outer, outer + edge, distance));
+
+            Color32 {
+                red: 255,
+                green: 255,
+                blue: 255,
+                alpha: (255. * ring * angle) as u8,
+            }
+        });
+
+        Self::from_raw(
+            gl,
+            &[RawImage {
+                pixels: pixels.into(),
+                width: SIZE as u32,
+                height: SIZE as u32,
+            }],
+        )
     }
 
     fn from_raw(gl: &WebGl2RenderingContext, images: &[RawImage]) -> Result<Self, Error> {
@@ -249,4 +352,9 @@ impl Texture {
     pub fn drop(&self, gl: &WebGl2RenderingContext) {
         gl.delete_texture(Some(&self.gltex));
     }
+}
+
+fn smooth_step(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0., 1.);
+    t * t * (3. - 2. * t)
 }

@@ -1,5 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
+    Mpq(String),
+    Image(fileformat::image::Error),
     CreateShaderFailed,
     CreateBufferFailed,
     CreateVertexArrayFailed,
@@ -16,6 +18,8 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Mpq(message) => formatter.write_str(message),
+            Self::Image(error) => error.fmt(formatter),
             Self::CreateShaderFailed => formatter.write_str("failed to create shader"),
             Self::CreateBufferFailed => formatter.write_str("failed to create_buffer"),
             Self::CreateVertexArrayFailed => formatter.write_str("failed to create_vertex_array"),
@@ -35,7 +39,20 @@ impl std::fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Image(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<fileformat::image::Error> for Error {
+    fn from(error: fileformat::image::Error) -> Self {
+        Self::Image(error)
+    }
+}
 
 #[cfg(test)]
 mod tests {
