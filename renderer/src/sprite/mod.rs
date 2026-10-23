@@ -19,7 +19,7 @@ pub mod render_params;
 
 mod material;
 mod node_matrix;
-mod render_phase;
+pub mod render_phase;
 mod utils;
 
 pub struct Sprite<'s> {

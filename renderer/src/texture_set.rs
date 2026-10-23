@@ -56,7 +56,7 @@ impl TextureSet {
         Self::load_image(mpq, path, |image| Texture::new(gl, image))
     }
 
-    pub(super) fn init(
+    pub fn init(
         gl: &WebGl2RenderingContext,
         war3_mpq: Option<&mut webrpg_mpq::Archive>,
     ) -> Result<Self, Error> {

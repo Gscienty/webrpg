@@ -7,6 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
+fileformat = { path = "../../fileformat" }
 renderer = { path = "../../renderer" }
 shared = { path = "../../shared" }
 webrpg-mpq = { path = "../../mpq" }

@@ -152,7 +152,15 @@ upload.onchange = async () => {
 };
 
 function animate(now) {
-  mdxRenderer?.render(Math.floor(now - renderStarted));
+  if (mdxRenderer) {
+    try {
+      mdxRenderer.render(Math.floor(now - renderStarted));
+    } catch (error) {
+      mdxRenderer.free();
+      mdxRenderer = null;
+      setStatus(`MDX 渲染失败：${error}`);
+    }
+  }
   requestAnimationFrame(animate);
 }
 
