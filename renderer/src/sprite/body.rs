@@ -10,9 +10,9 @@ use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlVertexArrayObject};
 use crate::{
     Error, shader,
     sprite::{
+        RenderParams,
         bound::Bound,
         material::{self, Material},
-        render_params::RenderParams,
         utils,
     },
 };
@@ -38,10 +38,10 @@ pub struct BodyRenderParams<'a, 's> {
 const MAX_SKIN_BONES: usize = 4;
 
 struct Geoset<'s> {
+    geoset: &'s mdx::Geoset<'s>,
     vertex_array: Vec<WebGlVertexArrayObject>,
     triangles_count: usize,
     index_bytes_offset: usize,
-    animation: Option<&'s mdx::GeosetAnimation<'s>>,
     material: Material<'s>,
     palette: Vec<u32>,
 }
@@ -226,23 +226,76 @@ impl<'s> Body<'s> {
             ..Default::default()
         };
 
-        for blended_pass in [false, true] {
-            if !render_param
-                .render_phase
-                .includes_pass(blended_pass, translucent_instance)
-            {
+        for geoset in self.geosets.iter() {
+            if !geoset.visible(render_param.global_time, render_param.frame) {
                 continue;
             }
 
-            for geoset in self.geosets.iter() {
-                if !geoset.visible(render_param.global_time, render_param.frame) {
-                    continue;
-                }
-
-                if geoset.material.has_pass(blended_pass) {
-                    geoset.render(gl, &param, render_param, state.clone(), tint, blended_pass)?;
-                }
+            if render_param
+                .render_phase
+                .includes_pass(false, translucent_instance)
+                && geoset.material.has_pass(false)
+            {
+                geoset.render(gl, &param, render_param, state.clone(), tint, false)?;
             }
+        }
+
+        let layer_count = self
+            .geosets
+            .iter()
+            .fold(0, |acc, geoset| acc + geoset.material.layers_count());
+
+        if layer_count == 0
+            || !render_param
+                .render_phase
+                .includes_pass(true, translucent_instance)
+        {
+            return Ok(());
+        }
+
+        let mut draw_order = Vec::with_capacity(self.geosets.len());
+        for geoset in self.geosets.iter() {
+            if !geoset.visible(render_param.global_time, render_param.frame) {
+                continue;
+            }
+
+            if !geoset.material.has_pass(true) {
+                continue;
+            }
+
+            draw_order.push(GeosetDrawOrder {
+                geoset,
+                layer: 0,
+                order: draw_order.len(),
+            })
+        }
+        draw_order.sort_by(|lhs, rhs| {
+            let left_blend = lhs
+                .geoset
+                .material
+                .layer(lhs.layer as usize)
+                .map_or(shared::BlendMode::None as u32, |layer| {
+                    layer.blend_mode as u32
+                });
+            let right_blend = rhs
+                .geoset
+                .material
+                .layer(lhs.layer as usize)
+                .map_or(shared::BlendMode::None as u32, |layer| {
+                    layer.blend_mode as u32
+                });
+
+            lhs.geoset
+                .material
+                .priority()
+                .cmp(&rhs.geoset.material.priority())
+                .then_with(|| left_blend.cmp(&right_blend))
+                .then_with(|| lhs.order.cmp(&rhs.order))
+        });
+
+        for draw in draw_order.into_iter() {
+            draw.geoset
+                .render(gl, &param, render_param, state.clone(), tint, true)?;
         }
 
         Ok(())
@@ -303,10 +356,10 @@ impl<'s> Geoset<'s> {
 
         Ok((
             Self {
+                geoset,
                 vertex_array,
                 triangles_count: geoset.triangles.len(),
                 index_bytes_offset: index_offset * size_of::<u16>(),
-                animation: geoset.anim,
                 material: Material::new(material),
                 palette,
             },
@@ -340,7 +393,7 @@ impl<'s> Geoset<'s> {
         state.bind_geoset_matrix_palette(body_param.bone_matrices, body_param.model, &self.palette);
 
         for (id, layer) in self.material.layers().enumerate() {
-            if material::layer_is_blended(layer) != blended_pass {
+            if layer.is_blended() != blended_pass {
                 continue;
             }
             gl.enable(WebGl2RenderingContext::DEPTH_TEST);
@@ -399,8 +452,8 @@ impl<'s> Geoset<'s> {
                         | shared::BlendMode::Blend
                 );
 
-            let alpha = self.material.evaluate_layer_alpha(
-                layer,
+            let alpha = layer.evaluate_alpha(
+                self.material.material,
                 render_param.global_time,
                 render_param.frame,
             );
@@ -470,16 +523,11 @@ impl<'s> Geoset<'s> {
     }
 
     pub fn visible(&self, global_time: u32, frame: u32) -> bool {
-        if self.animation.is_some() {
-            let color = self.evaluate_color(global_time, frame);
-            return color[3] >= f32::EPSILON;
-        }
-
-        true
+        self.geoset.visible(global_time, frame)
     }
 
     pub fn evaluate_color(&self, global_time: u32, frame: u32) -> math3::Vector4 {
-        let Some(animation) = self.animation else {
+        let Some(animation) = self.geoset.anim else {
             return (1., 1., 1., 1.).into();
         };
 
@@ -861,4 +909,10 @@ fn evaluate_light(
             mdx::LightType::Ambient => shader::LightType::Ambient,
         },
     })
+}
+
+pub struct GeosetDrawOrder<'s> {
+    geoset: &'s Geoset<'s>,
+    layer: u32,
+    order: usize,
 }

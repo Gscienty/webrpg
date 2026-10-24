@@ -47,6 +47,45 @@ struct LayerData {
 }
 
 impl<'s> Layer<'s> {
+    pub fn is_blended(&self) -> bool {
+        matches!(
+            self.blend_mode,
+            shared::BlendMode::Blend
+                | shared::BlendMode::Add
+                | shared::BlendMode::AddAlpha
+                | shared::BlendMode::Modulate
+                | shared::BlendMode::Modulate2X
+        )
+    }
+
+    pub fn evaluate_alpha(&self, material: &Material, global_time: u32, frame: u32) -> f32 {
+        let mut alpha = if self.alpha.is_finite() {
+            self.alpha
+        } else {
+            1.
+        };
+
+        if let Some(value) = self
+            .alpha_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+        {
+            alpha = value;
+        }
+        if let Some(material_alpha) = material
+            .alpha_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+        {
+            alpha *= material_alpha;
+        }
+
+        if !alpha.is_finite() {
+            alpha = 1.;
+        }
+        alpha.clamp(0., 1.)
+    }
+
     pub fn read(model: &'s Model, reader: &mut impl Read) -> io::Result<Self> {
         let size: u32 = read_value(reader)?;
         let payload_size = (size as usize)

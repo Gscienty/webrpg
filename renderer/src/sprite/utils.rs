@@ -1,3 +1,4 @@
+use shared::math3;
 use web_sys::WebGl2RenderingContext;
 
 use crate::sprite::render_phase::RenderPhase;
@@ -34,4 +35,16 @@ pub(super) fn set_alpha_key_state(
         gl.depth_mask(true);
         gl.blend_func(WebGl2RenderingContext::ONE, WebGl2RenderingContext::ZERO);
     }
+}
+
+pub fn evaluate_sprite_transform(angle: f32, origin: math3::Vector3, scale: f32) -> math3::Matrix4 {
+    let angle = math3::Orientation::from((angle, 0., 0.));
+    let rotation = math3::Quaternion::from(&angle);
+
+    math3::Matrix4::from_rotation_translation_scale_origin(
+        rotation,
+        origin,
+        (scale, scale, scale).into(),
+        (0., 0., 0.).into(),
+    )
 }

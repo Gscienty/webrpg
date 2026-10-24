@@ -1,15 +1,13 @@
 use std::{
     io::{self, Read},
     mem::size_of,
-    sync,
 };
 
-use shared::math3;
+use shared::math3::{self, Line3Intersect};
 
 use crate::mdx::{
     bounds::Bounds,
     geoset_animation::GeosetAnimation,
-    model::Model,
     utils::{read_list, read_value},
 };
 
@@ -23,7 +21,6 @@ const PVTX: u32 = u32::from_le_bytes(*b"PVTX");
 const UVAS: u32 = u32::from_le_bytes(*b"UVAS");
 const UVBS: u32 = u32::from_le_bytes(*b"UVBS");
 const VRTX: u32 = u32::from_le_bytes(*b"VRTX");
-const MAX_SKIN_BONES: usize = 4;
 
 #[derive(Debug)]
 pub struct Geoset<'s> {
@@ -63,6 +60,43 @@ fn missing_tag() -> io::Error {
 }
 
 impl<'s> Geoset<'s> {
+    pub fn visible(&self, global_time: u32, frame: u32) -> bool {
+        let Some(animation) = self.anim else {
+            return true;
+        };
+        let mut alpha = if animation.alpha.is_infinite() {
+            1.
+        } else {
+            animation.alpha
+        };
+        if let Some(value) = animation
+            .geoset_alphas
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+        {
+            alpha = value;
+        }
+        alpha.clamp(0., 1.) >= f32::EPSILON
+    }
+
+    pub fn trace(&self, line: &math3::Line3) -> Option<math3::Vector3> {
+        self.triangles
+            .chunks_exact(3)
+            .filter_map(|indices| {
+                let triangle = math3::Triangle3::from((
+                    *self.vertices.get(indices[0] as usize)?,
+                    *self.vertices.get(indices[1] as usize)?,
+                    *self.vertices.get(indices[2] as usize)?,
+                ));
+                line.intersect(triangle)
+            })
+            .min_by(|left, right| {
+                line.start()
+                    .distance(*left)
+                    .total_cmp(&line.start().distance(*right))
+            })
+    }
+
     pub fn read(reader: &mut impl Read) -> io::Result<Self> {
         let size: u32 = read_value(reader)?;
         let payload_size = (size as usize)
@@ -145,5 +179,42 @@ impl<'s> Geoset<'s> {
             values.push(Self::read(&mut payload)?);
         }
         Ok(values)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn traces_the_nearest_triangle_and_ignores_invalid_indices() {
+        let geoset = Geoset {
+            vertices: vec![
+                (-1., -1., 0.).into(),
+                (1., -1., 0.).into(),
+                (0., 1., 0.).into(),
+                (-1., -1., -1.).into(),
+                (1., -1., -1.).into(),
+                (0., 1., -1.).into(),
+            ],
+            triangles: vec![3, 4, 5, 0, 1, 2, 99, 1, 2],
+            normals: Vec::new(),
+            texcoord: Vec::new(),
+            primitive_types: Vec::new(),
+            primitive_counts: Vec::new(),
+            vertex_groups: Vec::new(),
+            matrix_group_sizes: Vec::new(),
+            matrices: Vec::new(),
+            material_id: 0,
+            group: 0,
+            selectable: 0,
+            default_bounds: Bounds::default(),
+            bounds: Vec::new(),
+            anim: None,
+        };
+        let line = math3::Line3::from(((0., 0., 1.).into(), (0., 0., -2.).into()));
+
+        assert_eq!(geoset.trace(&line), Some((0., 0., 0.).into()));
+        assert!(geoset.visible(0, 0));
     }
 }

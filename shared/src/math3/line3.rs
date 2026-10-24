@@ -12,6 +12,16 @@ impl From<(Vector3, Vector3)> for Line3 {
     }
 }
 
+impl Line3 {
+    pub const fn start(&self) -> Vector3 {
+        self.a
+    }
+
+    pub const fn end(&self) -> Vector3 {
+        self.b
+    }
+}
+
 pub trait Line3Intersect<T> {
     fn intersect(&self, obj: T) -> Option<Vector3>;
 }

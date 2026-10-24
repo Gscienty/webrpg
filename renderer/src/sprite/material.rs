@@ -7,7 +7,7 @@ use crate::{
 };
 
 pub(super) struct Material<'s> {
-    material: &'s mdx::Material<'s>,
+    pub material: &'s mdx::Material<'s>,
 }
 
 impl<'s> Material<'s> {
@@ -19,53 +19,26 @@ impl<'s> Material<'s> {
         self.material
             .layers
             .iter()
-            .any(|layer| layer_is_blended(layer) == blended_pass)
+            .any(|layer| layer.is_blended() == blended_pass)
     }
 
     pub fn layers(&self) -> impl Iterator<Item = &mdx::Layer<'s>> {
         self.material.layers.iter()
     }
 
-    pub fn evaluate_layer_alpha(&self, layer: &mdx::Layer, global_time: u32, frame: u32) -> f32 {
-        let mut alpha = if layer.alpha.is_finite() {
-            layer.alpha
-        } else {
-            1.
-        };
+    pub fn layer(&self, index: usize) -> Option<&mdx::Layer<'s>> {
+        self.material.layers.get(index)
+    }
 
-        if let Some(value) = layer
-            .alpha_tracks
-            .as_ref()
-            .and_then(|track| track.get_value(global_time, frame))
-        {
-            alpha = value;
-        }
-        if let Some(material_alpha) = self
-            .material
-            .alpha_tracks
-            .as_ref()
-            .and_then(|track| track.get_value(global_time, frame))
-        {
-            alpha *= material_alpha;
-        }
+    pub fn layers_count(&self) -> usize {
+        self.material.layers.len()
+    }
 
-        if !alpha.is_finite() {
-            alpha = 1.;
-        }
-        alpha.clamp(0., 1.)
+    pub fn priority(&self) -> u32 {
+        self.material.priority
     }
 }
 
-pub(super) fn layer_is_blended(layer: &mdx::Layer) -> bool {
-    matches!(
-        layer.blend_mode,
-        shared::BlendMode::Blend
-            | shared::BlendMode::Add
-            | shared::BlendMode::AddAlpha
-            | shared::BlendMode::Modulate
-            | shared::BlendMode::Modulate2X
-    )
-}
 pub(super) fn layer_set_blended(
     gl: &WebGl2RenderingContext,
     layer_id: usize,
@@ -76,7 +49,7 @@ pub(super) fn layer_set_blended(
 ) -> bool {
     utils::set_alpha_key_state(gl, render_phase, msaa_samples, false);
 
-    if render_phase == RenderPhase::Lights && layer_is_blended(layer) {
+    if render_phase == RenderPhase::Lights && layer.is_blended() {
         return false;
     }
 

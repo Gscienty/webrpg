@@ -1,26 +1,23 @@
-use std::{collections::BTreeMap, pin::Pin};
+use std::pin::Pin;
 
 use fileformat::mdx;
-use shared::math3;
 use web_sys::WebGl2RenderingContext;
 
-use crate::{
-    Error,
-    sprite::{
-        body::{Body, BodyRenderParams},
-        render_params::RenderParams,
-    },
-    texture_set::TextureSet,
-};
+use crate::{Error, sprite::body::Body, texture_set::TextureSet};
 
 pub mod body;
 pub mod bound;
-pub mod render_params;
 
 mod material;
 mod node_matrix;
 pub mod render_phase;
 mod utils;
+
+mod render;
+mod trace;
+
+pub use render::RenderParams;
+pub use trace::TraceParam;
 
 pub struct Sprite<'s> {
     model: Pin<Box<mdx::Model<'s>>>,
@@ -60,73 +57,5 @@ impl<'s> Sprite<'s> {
             textures,
             body,
         })
-    }
-
-    pub fn render(
-        &self,
-        gl: &WebGl2RenderingContext,
-        render_param: &RenderParams,
-    ) -> Result<(), Error> {
-        let model: &'s mdx::Model<'s> = unsafe { &*(self.model.as_ref().get_ref() as *const _) };
-
-        let transform = render_param.evaluate_sprite_transform();
-
-        let bone_matrices = self.bone_matrices(
-            render_param.lerpfrac,
-            transform,
-            render_param.global_time,
-            render_param.frame,
-            render_param.previous_frame,
-        );
-
-        self.body.render(
-            gl,
-            render_param,
-            BodyRenderParams {
-                model,
-                bone_matrices: &bone_matrices,
-                textures: &self.textures,
-                transform,
-            },
-        )?;
-
-        Ok(())
-    }
-
-    fn bone_matrices(
-        &self,
-        lerpfrac: f32,
-        transform: math3::Matrix4,
-        global_time: u32,
-        frame1: u32,
-        frame0: u32,
-    ) -> BTreeMap<u32, math3::Matrix4> {
-        let model_ref: &'s mdx::Model<'s> =
-            unsafe { &*(self.model.as_ref().get_ref() as *const _) };
-
-        let matrices: BTreeMap<u32, math3::Matrix4> = self
-            .model
-            .nodes()
-            .map(|(id, node)| {
-                (
-                    id,
-                    node_matrix::evaluate_node_matrix(
-                        lerpfrac,
-                        model_ref,
-                        node,
-                        global_time,
-                        frame1,
-                        frame0,
-                    ),
-                )
-            })
-            .collect();
-
-        let mut result = BTreeMap::new();
-        self.model.nodes().for_each(|(_, node)| {
-            node_matrix::get_node_global_matrix(model_ref, node, transform, &matrices, &mut result);
-        });
-
-        result
     }
 }

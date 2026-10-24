@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use renderer::{
     shader::{Program, builtin::MODEL_SHADER},
-    sprite::{Sprite, render_params::RenderParams, render_phase::RenderPhase},
+    sprite::{RenderParams, Sprite, render_phase::RenderPhase},
     texture::Texture,
     texture_set::TextureSet,
 };
