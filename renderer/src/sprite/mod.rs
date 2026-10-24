@@ -58,4 +58,8 @@ impl<'s> Sprite<'s> {
             body,
         })
     }
+
+    pub fn destroy(self, gl: &WebGl2RenderingContext) {
+        self.body.destroy(gl);
+    }
 }

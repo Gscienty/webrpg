@@ -168,6 +168,19 @@ impl<'s> Body<'s> {
         })
     }
 
+    pub fn destroy(self, gl: &WebGl2RenderingContext) {
+        for geoset in &self.geosets {
+            for vertex_array in &geoset.vertex_array {
+                gl.delete_vertex_array(Some(vertex_array));
+            }
+        }
+        gl.delete_buffer(Some(&self.vertex_buffer));
+        gl.delete_buffer(Some(&self.index_buffer));
+        if let Some(uv_buffer) = &self.uv_buffer {
+            gl.delete_buffer(Some(uv_buffer));
+        }
+    }
+
     pub fn render(
         &self,
         gl: &WebGl2RenderingContext,
