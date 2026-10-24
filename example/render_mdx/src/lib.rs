@@ -28,7 +28,9 @@ pub struct MdxRenderer {
     sprite: Sprite<'static>,
     texture_set: TextureSet,
     model_program: Program,
+    animations: Vec<(String, [u32; 2])>,
     animation_interval: [u32; 2],
+    team: u32,
     view_projection: Matrix4,
 }
 
@@ -67,15 +69,24 @@ impl MdxRenderer {
                 radius * 20.,
             )
             .look_at(eye, center - eye, (0., 0., 1.).into());
-        let animation_interval = model
+        let animations: Vec<_> = model
             .sequences
             .iter()
-            .find(|sequence| sequence.name.eq_ignore_ascii_case("Stand"))
-            .or_else(|| model.sequences.first())
-            .map(|sequence| sequence.interval)
+            .map(|sequence| (sequence.name.to_string(), sequence.interval))
+            .collect();
+        let animation_interval = animations
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("Stand"))
+            .or_else(|| animations.first())
+            .map(|(_, interval)| *interval)
             .unwrap_or_default();
 
-        let mut texture_set = TextureSet::init(&gl, None).map_err(js_error)?;
+        let mut texture_set = if mpq_name.eq_ignore_ascii_case("war3.mpq") {
+            TextureSet::init(&gl, Some(&mut archive))
+        } else {
+            TextureSet::init(&gl, None)
+        }
+        .map_err(js_error)?;
         let sprite =
             Sprite::new(&gl, model, Some(&mut archive), &mut texture_set).map_err(js_error)?;
         let model_program = MODEL_SHADER.compile_program(&gl).map_err(js_error)?;
@@ -85,9 +96,36 @@ impl MdxRenderer {
             sprite,
             texture_set,
             model_program,
+            animations,
             animation_interval,
+            team: 1,
             view_projection,
         })
+    }
+
+    pub fn animation_names(&self) -> String {
+        self.animations
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    pub fn select_animation(&mut self, index: usize) -> Result<(), JsValue> {
+        self.animation_interval = self
+            .animations
+            .get(index)
+            .map(|(_, interval)| *interval)
+            .ok_or_else(|| JsValue::from_str("invalid animation index"))?;
+        Ok(())
+    }
+
+    pub fn select_team(&mut self, team: u32) -> Result<(), JsValue> {
+        if team >= renderer::texture_set::MAX_TEAMS as u32 {
+            return Err(JsValue::from_str("invalid team index"));
+        }
+        self.team = team;
+        Ok(())
     }
 
     pub fn render(&self, elapsed_ms: u32) -> Result<(), JsValue> {
@@ -105,12 +143,13 @@ impl MdxRenderer {
                         angle: 0.,
                         scale: 1.,
                         no_frustum_cull: true,
+                        no_face_cull: true,
                         no_lighting: true,
                         render_phase,
                         msaa_samples: 0,
                         lerpfrac: 0.,
                         tint: Color32::white(),
-                        team: 0,
+                        team: self.team,
                         global_time: elapsed_ms,
                         frame,
                         previous_frame: frame,

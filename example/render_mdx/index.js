@@ -6,6 +6,19 @@ const breadcrumbs = document.querySelector("#breadcrumbs");
 const entries = document.querySelector("#entries");
 const status = document.querySelector("#status");
 const canvas = document.querySelector("#canvas");
+const renderControls = document.querySelector("#render-controls");
+const animationControls = document.querySelector("#animation-controls");
+const animationSelect = document.querySelector("#animation");
+const teamSelect = document.querySelector("#team");
+
+const teamNames = ["红", "蓝", "青", "紫", "黄", "橙", "绿", "粉", "灰", "浅蓝", "深绿", "棕", "栗", "海军蓝", "青绿", "黑"];
+teamSelect.replaceChildren(...teamNames.map((name, index) => {
+  const option = document.createElement("option");
+  option.value = index;
+  option.textContent = name;
+  return option;
+}));
+teamSelect.value = "1";
 
 await init();
 
@@ -15,6 +28,7 @@ let activeData = null;
 let filePaths = [];
 let currentPath = [];
 let mdxRenderer = null;
+let activeMdxPath = null;
 let renderStarted = performance.now();
 
 function setStatus(message) {
@@ -71,6 +85,10 @@ async function openArchive(name) {
 }
 
 function closeArchive() {
+  mdxRenderer?.free();
+  mdxRenderer = null;
+  activeMdxPath = null;
+  renderControls.hidden = true;
   activeArchive = null;
   activeData = null;
   filePaths = [];
@@ -132,13 +150,45 @@ function renderMdx(path) {
   try {
     mdxRenderer?.free();
     mdxRenderer = new MdxRenderer(canvas, activeArchive, activeData, path);
+    activeMdxPath = path;
+    const animations = mdxRenderer.animation_names().split("\n").filter(Boolean);
+    animationSelect.replaceChildren(...animations.map((name, index) => {
+      const option = document.createElement("option");
+      option.value = index;
+      option.textContent = name;
+      return option;
+    }));
+    const standIndex = animations.findIndex((name) => name.toLowerCase() === "stand");
+    animationSelect.value = String(standIndex < 0 ? 0 : standIndex);
+    animationControls.hidden = animations.length === 0;
+    renderControls.hidden = false;
     renderStarted = performance.now();
     setStatus(`正在渲染 ${path}`);
   } catch (error) {
     mdxRenderer = null;
-    setStatus(`MDX 加载失败：${error}`);
+    activeMdxPath = null;
+    renderControls.hidden = true;
+    setStatus(`MDX 加载失败 ${path}：${error}`);
   }
 }
+
+animationSelect.onchange = () => {
+  try {
+    mdxRenderer.select_animation(Number(animationSelect.value));
+    renderStarted = performance.now();
+    setStatus(`正在渲染 ${activeMdxPath}：${animationSelect.selectedOptions[0].textContent}`);
+  } catch (error) {
+    setStatus(`动画切换失败 ${activeMdxPath}：${error}`);
+  }
+};
+
+teamSelect.onchange = () => {
+  try {
+    mdxRenderer.select_team(Number(teamSelect.value));
+  } catch (error) {
+    setStatus(`队伍颜色切换失败 ${activeMdxPath}：${error}`);
+  }
+};
 
 upload.onchange = async () => {
   for (const file of upload.files) {
@@ -158,7 +208,8 @@ function animate(now) {
     } catch (error) {
       mdxRenderer.free();
       mdxRenderer = null;
-      setStatus(`MDX 渲染失败：${error}`);
+      renderControls.hidden = true;
+      setStatus(`MDX 渲染失败 ${activeMdxPath}：${error}`);
     }
   }
   requestAnimationFrame(animate);

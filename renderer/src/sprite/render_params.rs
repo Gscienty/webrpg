@@ -8,6 +8,7 @@ pub struct RenderParams<'s> {
     pub scale: f32,
 
     pub no_frustum_cull: bool,
+    pub no_face_cull: bool,
     pub no_lighting: bool,
 
     pub render_phase: RenderPhase,

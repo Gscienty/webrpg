@@ -152,7 +152,7 @@ impl Quaternion {
     pub fn slerp(lhs: Self, mut rhs: Self, t: f32) -> Self {
         let mut cosine = lhs.dot(rhs);
         if cosine < 0. {
-            rhs = -rhs;
+            rhs = rhs * -1.;
             cosine = -cosine;
         }
 
@@ -180,5 +180,18 @@ impl Quaternion {
             return self;
         }
         self * (1. / length)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slerp_treats_opposite_quaternion_signs_as_the_same_rotation() {
+        let rotation = Quaternion::from((0., 0., 0., 1.));
+        let same_rotation = Quaternion::from((0., 0., 0., -1.));
+
+        assert_eq!(Quaternion::slerp(rotation, same_rotation, 0.5), rotation);
     }
 }

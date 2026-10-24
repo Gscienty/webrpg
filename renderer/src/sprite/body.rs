@@ -174,6 +174,8 @@ impl<'s> Body<'s> {
         render_param: &RenderParams,
         param: BodyRenderParams,
     ) -> Result<(), Error> {
+        gl.depth_func(WebGl2RenderingContext::LEQUAL);
+
         if !render_param.no_frustum_cull {
             let sphere = math3::Sphere3 {
                 center: param.transform * self.bound.cube.center(),
@@ -344,7 +346,7 @@ impl<'s> Geoset<'s> {
             gl.enable(WebGl2RenderingContext::DEPTH_TEST);
             state.alpha_key = false;
 
-            if body_param.model.cameras.is_empty() {
+            if render_param.no_face_cull || body_param.model.cameras.is_empty() {
                 gl.disable(WebGl2RenderingContext::CULL_FACE);
             } else {
                 gl.enable(WebGl2RenderingContext::CULL_FACE);

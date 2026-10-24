@@ -20,6 +20,8 @@
       .danger { color: #fca5a5; }
       #breadcrumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 18px; }
       #status { min-height: 3em; color: #94a3b8; white-space: pre-wrap; }
+      #render-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+      select { border: 1px solid #475569; border-radius: 6px; padding: 7px 10px; color: inherit; background: #1e293b; }
       canvas { width: min(100%, 960px); aspect-ratio: 4 / 3; border: 1px solid #334155; background: #090d14; }
       @media (max-width: 760px) { main { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid #334155; } }
     </style>
@@ -34,7 +36,19 @@
         <ul id="entries"></ul>
         <div id="status">正在读取 OPFS…</div>
       </aside>
-      <section><canvas id="canvas" width="960" height="720"></canvas></section>
+      <section>
+        <div>
+          <div id="render-controls" hidden>
+            <span id="animation-controls">
+              <label for="animation">动画</label>
+              <select id="animation"></select>
+            </span>
+            <label for="team">队伍颜色</label>
+            <select id="team"></select>
+          </div>
+          <canvas id="canvas" width="960" height="720"></canvas>
+        </div>
+      </section>
     </main>
     <script type="module" src="./index.js"></script>
   </body>
