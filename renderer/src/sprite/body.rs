@@ -1,10 +1,7 @@
 use std::collections::BTreeMap;
 
 use fileformat::mdx;
-use shared::{
-    color,
-    math3::{self, FrustumContains},
-};
+use shared::{color, math3};
 use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlVertexArrayObject};
 
 use crate::{
@@ -18,7 +15,7 @@ use crate::{
 };
 
 pub struct Body<'s> {
-    bound: Bound,
+    pub(super) bound: Bound,
 
     vertex_buffer: WebGlBuffer,
     index_buffer: WebGlBuffer,
@@ -33,6 +30,8 @@ pub struct BodyRenderParams<'a, 's> {
     pub bone_matrices: &'a BTreeMap<u32, math3::Matrix4>,
     pub textures: &'a [usize],
     pub transform: math3::Matrix4,
+    pub lights: [math3::Matrix4; 8],
+    pub lights_count: u32,
 }
 
 const MAX_SKIN_BONES: usize = 4;
@@ -189,30 +188,6 @@ impl<'s> Body<'s> {
     ) -> Result<(), Error> {
         gl.depth_func(WebGl2RenderingContext::LEQUAL);
 
-        if !render_param.no_frustum_cull {
-            let sphere = math3::Sphere3 {
-                center: param.transform * self.bound.cube.center(),
-                radius: self.bound.radius * render_param.scale,
-            };
-
-            if !render_param.frustum.contains(sphere)
-                || !render_param
-                    .frustum
-                    .contains((self.bound.cube, param.transform))
-            {
-                return Ok(());
-            }
-        }
-
-        let (lights, lights_count) = pack_light(
-            param.model,
-            param.bone_matrices,
-            render_param.light,
-            param.transform,
-            render_param.global_time,
-            render_param.frame,
-        );
-
         let tint: math3::Vector4 = (
             render_param.tint.red as f32 / 255.,
             render_param.tint.green as f32 / 255.,
@@ -232,8 +207,8 @@ impl<'s> Body<'s> {
             fog_enable: render_param.fog.is_some(),
             fog_color: render_param.fog.map(|(color, _)| color).unwrap_or_default(),
             fog_params: render_param.fog.map(|(_, range)| range).unwrap_or_default(),
-            lights,
-            lights_count,
+            lights: param.lights,
+            lights_count: param.lights_count,
             layer_alpha: 1.,
 
             ..Default::default()
@@ -395,7 +370,9 @@ impl<'s> Geoset<'s> {
             return Ok(());
         }
 
-        let color = self.evaluate_color(render_param.global_time, render_param.frame);
+        let color = self
+            .geoset
+            .evaluate_color(render_param.global_time, render_param.frame);
         state.geoset_color = (
             color[0] * tint[0],
             color[1] * tint[1],
@@ -474,19 +451,11 @@ impl<'s> Geoset<'s> {
                 continue;
             }
             state.layer_alpha = alpha;
-            state.uv_matrix = layer_bind_texture_animation(
-                body_param.model,
-                layer,
-                render_param.global_time,
-                render_param.frame,
-            );
+            state.uv_matrix =
+                layer.bind_texture_animation(render_param.global_time, render_param.frame);
 
-            let model_texture_id = evaluate_layer_texture_id(
-                layer,
-                body_param.model,
-                render_param.global_time,
-                render_param.frame,
-            );
+            let model_texture_id =
+                layer.evaluate_texture_id(render_param.global_time, render_param.frame);
             let Some(model_texture) = body_param.model.textures.get(model_texture_id) else {
                 continue;
             };
@@ -537,51 +506,6 @@ impl<'s> Geoset<'s> {
 
     pub fn visible(&self, global_time: u32, frame: u32) -> bool {
         self.geoset.visible(global_time, frame)
-    }
-
-    pub fn evaluate_color(&self, global_time: u32, frame: u32) -> math3::Vector4 {
-        let Some(animation) = self.geoset.anim else {
-            return (1., 1., 1., 1.).into();
-        };
-
-        let mut color: shared::math3::Vector4 = (
-            1.,
-            1.,
-            1.,
-            if animation.alpha.is_infinite() {
-                1.
-            } else {
-                animation.alpha
-            },
-        )
-            .into();
-
-        if let Some(ref alphas) = animation.geoset_alphas
-            && let Some(alpha) = alphas.get_value(global_time, frame)
-        {
-            color[3] = alpha;
-        }
-
-        if animation.flags & 0x02 != 0 {
-            let geoset_color = if let Some(ref colors) = animation.geoset_colors
-                && let Some(color) = colors.get_value(global_time, frame)
-            {
-                color
-            } else {
-                animation.color
-            };
-
-            color[0] = geoset_color[0];
-            color[1] = geoset_color[1];
-            color[2] = geoset_color[2];
-        }
-
-        color[0] = color[0].clamp(0., 1.);
-        color[1] = color[1].clamp(0., 1.);
-        color[2] = color[2].clamp(0., 1.);
-        color[3] = color[3].clamp(0., 1.);
-
-        color
     }
 }
 
@@ -698,230 +622,6 @@ fn add_geoset_matrix_palette_entry(matrix_palette: &mut Vec<u32>, matrix_id: u32
     matrix_palette.push(matrix_id);
 
     (matrix_palette.len() - 1) as u8
-}
-
-fn evaluate_layer_texture_id(
-    layer: &mdx::Layer,
-    model: &mdx::Model,
-    global_time: u32,
-    frame: u32,
-) -> usize {
-    layer
-        .flipbook_tracks
-        .as_ref()
-        .and_then(|track| track.get_value(global_time, frame))
-        .filter(|&texture_id| (texture_id as usize) < model.textures.len())
-        .unwrap_or(layer.texture_id) as usize
-}
-
-fn layer_bind_texture_animation(
-    model: &mdx::Model,
-    layer: &mdx::Layer,
-    global_time: u32,
-    frame: u32,
-) -> math3::Matrix3 {
-    let mut translation = shared::math3::Vector3::default();
-    let mut rotation = shared::math3::Quaternion::default();
-    let mut scale = shared::math3::Vector3::from((1., 1., 1.));
-
-    if let Some(animation) = model.texture_animations.get(layer.transform_id as usize) {
-        if let Some(value) = animation
-            .translation
-            .as_ref()
-            .and_then(|track| track.get_value(global_time, frame))
-        {
-            translation = value;
-        }
-        if let Some(value) = animation
-            .rotation
-            .as_ref()
-            .and_then(|track| track.get_value(global_time, frame))
-        {
-            rotation = value;
-        }
-        if let Some(value) = animation
-            .scale
-            .as_ref()
-            .and_then(|track| track.get_value(global_time, frame))
-        {
-            scale = value;
-        }
-    }
-
-    if !translation[0].is_finite() || !translation[1].is_finite() {
-        translation = shared::math3::Vector3::default();
-    }
-    if !rotation.z.is_finite() || !rotation.w.is_finite() {
-        rotation = shared::math3::Quaternion::default();
-    }
-    if !scale[0].is_finite() || !scale[1].is_finite() {
-        scale = shared::math3::Vector3::from((1., 1., 1.));
-    }
-
-    let c = rotation.w * rotation.w - rotation.z * rotation.z;
-    let s = 2. * rotation.z * rotation.w;
-    let tx = scale[0] * (c * (translation[0] - 0.5) - s * (translation[1] - 0.5)) + 0.5;
-    let ty = scale[1] * (s * (translation[0] - 0.5) + c * (translation[1] - 0.5)) + 0.5;
-    let mut matrix = shared::math3::Matrix3::zero();
-    matrix[0] = (scale[0] * c, scale[1] * s, 0.).into();
-    matrix[1] = (-scale[0] * s, scale[1] * c, 0.).into();
-    matrix[2] = (tx, ty, 1.).into();
-    matrix
-}
-
-fn pack_light(
-    model: &mdx::Model,
-    bone_matrices: &BTreeMap<u32, math3::Matrix4>,
-    light_matrix: math3::Matrix4,
-    transform: math3::Matrix4,
-    global_time: u32,
-    frame: u32,
-) -> ([math3::Matrix4; 8], u32) {
-    let mut lighting = shader::ModelLighting::default();
-
-    lighting.lights.extend(collect_model_lights(
-        model,
-        bone_matrices,
-        transform,
-        global_time,
-        frame,
-    ));
-
-    let ambient = if lighting.lights.is_empty() { 0.35 } else { 0. };
-    lighting.ambient = (ambient, ambient, ambient).into();
-
-    if lighting.lights.is_empty() {
-        let directional = 0.75;
-        lighting.lights.push(shader::ModelLight {
-            dir: (
-                -light_matrix[0][2],
-                -light_matrix[1][2],
-                -light_matrix[2][2],
-            )
-                .into(),
-            color: (directional, directional, directional).into(),
-            intensity: 1.,
-            typ: shader::LightType::Direct,
-
-            ..Default::default()
-        });
-    }
-
-    let packed_lights = lighting.pack();
-    let lights_count = packed_lights.len().min(8);
-    let mut lights = [shared::math3::Matrix4::zero(); 8];
-    lights[..lights_count].copy_from_slice(&packed_lights[..lights_count]);
-
-    (lights, lights_count as u32)
-}
-
-fn collect_model_lights(
-    model: &mdx::Model,
-    bone_matrices: &BTreeMap<u32, math3::Matrix4>,
-    transform: math3::Matrix4,
-    global_time: u32,
-    frame: u32,
-) -> Vec<shader::ModelLight> {
-    model
-        .lights
-        .iter()
-        .filter_map(|light| {
-            evaluate_light(
-                model,
-                light,
-                bone_matrices,
-                transform,
-                global_time,
-                frame,
-                true,
-            )
-        })
-        .collect()
-}
-
-fn evaluate_light(
-    model: &mdx::Model,
-    light: &mdx::Light,
-    bone_matrices: &BTreeMap<u32, math3::Matrix4>,
-    transform: math3::Matrix4,
-    global_time: u32,
-    frame: u32,
-    visibility: bool,
-) -> Option<shader::ModelLight> {
-    let visibility = if visibility {
-        light
-            .visibility_tracks
-            .as_ref()
-            .and_then(|track| track.get_value(global_time, frame))
-            .unwrap_or(1.)
-    } else {
-        1.
-    };
-    if visibility < f32::EPSILON {
-        return None;
-    }
-
-    let color = light
-        .color_tracks
-        .as_ref()
-        .and_then(|track| track.get_value(global_time, frame))
-        .unwrap_or(light.color);
-    let intensity = light
-        .intensity_tracks
-        .as_ref()
-        .and_then(|track| track.get_value(global_time, frame))
-        .unwrap_or(light.intensity);
-    let ambient = light
-        .ambient_color_tracks
-        .as_ref()
-        .and_then(|track| track.get_value(global_time, frame))
-        .unwrap_or(light.ambient_color);
-    let ambient_intensity = light
-        .ambient_intensity_tracks
-        .as_ref()
-        .and_then(|track| track.get_value(global_time, frame))
-        .unwrap_or(light.ambient_intensity);
-    let atten_start = light
-        .attenuation_start_tracks
-        .as_ref()
-        .and_then(|track| track.get_value(global_time, frame))
-        .unwrap_or(light.attenuation_start);
-
-    let pivot = model
-        .pivots
-        .get(light.node.object_id as usize)
-        .copied()
-        .unwrap_or_default();
-    let mut local_pos = pivot;
-    let mut local_dir_target = pivot + shared::math3::Vector3::from((0., 0., -1.));
-    if let Some(&node_matrix) = bone_matrices.get(&light.node.object_id) {
-        local_pos = node_matrix * local_pos;
-        local_dir_target = node_matrix * local_dir_target;
-    }
-
-    let world_pos = transform * local_pos;
-    let world_dir_target = transform * local_dir_target;
-    let world_dir = world_dir_target - world_pos;
-    let world_dir = if world_dir.length_sq() < f32::EPSILON {
-        shared::math3::Vector3::from((0., 0., -1.))
-    } else {
-        world_dir.normalize()
-    };
-
-    Some(shader::ModelLight {
-        pos: world_pos,
-        dir: -world_dir,
-        color,
-        ambient,
-        atten_start,
-        intensity: intensity * visibility,
-        ambient_intensity: ambient_intensity * visibility,
-        typ: match light.type_ {
-            mdx::LightType::Omni => shader::LightType::Omni,
-            mdx::LightType::Direct => shader::LightType::Direct,
-            mdx::LightType::Ambient => shader::LightType::Ambient,
-        },
-    })
 }
 
 pub struct GeosetDrawOrder<'s> {

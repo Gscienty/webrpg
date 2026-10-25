@@ -8,6 +8,7 @@ use crate::{Error, sprite::body::Body, texture_set::TextureSet};
 pub mod body;
 pub mod bound;
 
+mod light;
 mod material;
 mod node_matrix;
 pub mod render_phase;
@@ -23,7 +24,6 @@ pub struct Sprite<'s> {
     model: Pin<Box<mdx::Model<'s>>>,
 
     textures: Vec<usize>,
-
     body: Body<'s>,
 }
 

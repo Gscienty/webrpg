@@ -3,6 +3,8 @@ use std::{
     mem::size_of,
 };
 
+use shared::math3;
+
 use crate::mdx::{model::Model, track::Tracks, utils::read_value};
 
 const KMTA: u32 = u32::from_le_bytes(*b"KMTA");
@@ -25,6 +27,7 @@ pub enum GeoFlag {
 
 #[derive(Debug)]
 pub struct Layer<'s> {
+    pub model: &'s Model<'s>,
     pub blend_mode: shared::BlendMode,
     pub flags: u32,
     pub texture_id: u32,
@@ -47,6 +50,68 @@ struct LayerData {
 }
 
 impl<'s> Layer<'s> {
+    pub fn bind_texture_animation(&self, global_time: u32, frame: u32) -> math3::Matrix3 {
+        let mut translation = math3::Vector3::default();
+        let mut rotation = math3::Quaternion::default();
+        let mut scale = math3::Vector3::from((1., 1., 1.));
+
+        if let Some(animation) = self
+            .model
+            .texture_animations
+            .get(self.transform_id as usize)
+        {
+            if let Some(value) = animation
+                .translation
+                .as_ref()
+                .and_then(|track| track.get_value(global_time, frame))
+            {
+                translation = value;
+            }
+            if let Some(value) = animation
+                .rotation
+                .as_ref()
+                .and_then(|track| track.get_value(global_time, frame))
+            {
+                rotation = value;
+            }
+            if let Some(value) = animation
+                .scale
+                .as_ref()
+                .and_then(|track| track.get_value(global_time, frame))
+            {
+                scale = value;
+            }
+        }
+
+        if !translation[0].is_finite() || !translation[1].is_finite() {
+            translation = math3::Vector3::default();
+        }
+        if !rotation.z.is_finite() || !rotation.w.is_finite() {
+            rotation = math3::Quaternion::default();
+        }
+        if !scale[0].is_finite() || !scale[1].is_finite() {
+            scale = math3::Vector3::from((1., 1., 1.));
+        }
+
+        let c = rotation.w * rotation.w - rotation.z * rotation.z;
+        let s = 2. * rotation.z * rotation.w;
+        let tx = scale[0] * (c * (translation[0] - 0.5) - s * (translation[1] - 0.5)) + 0.5;
+        let ty = scale[1] * (s * (translation[0] - 0.5) + c * (translation[1] - 0.5)) + 0.5;
+        let mut matrix = math3::Matrix3::zero();
+        matrix[0] = (scale[0] * c, scale[1] * s, 0.).into();
+        matrix[1] = (-scale[0] * s, scale[1] * c, 0.).into();
+        matrix[2] = (tx, ty, 1.).into();
+        matrix
+    }
+
+    pub fn evaluate_texture_id(&self, global_time: u32, frame: u32) -> usize {
+        self.flipbook_tracks
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+            .filter(|&texture_id| (texture_id as usize) < self.model.textures.len())
+            .unwrap_or(self.texture_id) as usize
+    }
+
     pub fn is_blended(&self) -> bool {
         matches!(
             self.blend_mode,
@@ -116,6 +181,7 @@ impl<'s> Layer<'s> {
             }
         };
         let mut result = Self {
+            model,
             blend_mode,
             flags: data.flags,
             texture_id: data.texture_id,

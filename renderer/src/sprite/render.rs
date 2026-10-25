@@ -7,7 +7,10 @@ use crate::{
     texture_set::TextureSet,
 };
 use fileformat::mdx;
-use shared::{color, math3};
+use shared::{
+    color,
+    math3::{self, FrustumContains},
+};
 use web_sys::WebGl2RenderingContext;
 
 use crate::{
@@ -29,12 +32,34 @@ impl<'s> Sprite<'s> {
             render_param.scale,
         );
 
+        if !render_param.no_frustum_cull {
+            let sphere = math3::Sphere3 {
+                center: transform * self.body.bound.cube.center(),
+                radius: self.body.bound.radius * render_param.scale,
+            };
+
+            if !render_param.frustum.contains(sphere)
+                || !render_param
+                    .frustum
+                    .contains((self.body.bound.cube, transform))
+            {
+                return Ok(());
+            }
+        }
+
         let bone_matrices = self.bone_matrices(
             render_param.lerpfrac,
             transform,
             render_param.global_time,
             render_param.frame,
             render_param.previous_frame,
+        );
+        let (lights, lights_count) = self.pack_light(
+            &bone_matrices,
+            render_param.light,
+            transform,
+            render_param.global_time,
+            render_param.frame,
         );
 
         self.body.render(
@@ -45,6 +70,8 @@ impl<'s> Sprite<'s> {
                 bone_matrices: &bone_matrices,
                 textures: &self.textures,
                 transform,
+                lights,
+                lights_count,
             },
         )?;
 

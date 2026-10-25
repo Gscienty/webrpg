@@ -60,6 +60,50 @@ fn missing_tag() -> io::Error {
 }
 
 impl<'s> Geoset<'s> {
+    pub fn evaluate_color(&self, global_time: u32, frame: u32) -> math3::Vector4 {
+        let Some(animation) = self.anim else {
+            return (1., 1., 1., 1.).into();
+        };
+
+        let mut color: math3::Vector4 = (
+            1.,
+            1.,
+            1.,
+            if animation.alpha.is_infinite() {
+                1.
+            } else {
+                animation.alpha
+            },
+        )
+            .into();
+
+        if let Some(alpha) = animation
+            .geoset_alphas
+            .as_ref()
+            .and_then(|track| track.get_value(global_time, frame))
+        {
+            color[3] = alpha;
+        }
+
+        if animation.flags & 0x02 != 0 {
+            let geoset_color = animation
+                .geoset_colors
+                .as_ref()
+                .and_then(|track| track.get_value(global_time, frame))
+                .unwrap_or(animation.color);
+
+            color[0] = geoset_color[0];
+            color[1] = geoset_color[1];
+            color[2] = geoset_color[2];
+        }
+
+        color[0] = color[0].clamp(0., 1.);
+        color[1] = color[1].clamp(0., 1.);
+        color[2] = color[2].clamp(0., 1.);
+        color[3] = color[3].clamp(0., 1.);
+        color
+    }
+
     pub fn visible(&self, global_time: u32, frame: u32) -> bool {
         let Some(animation) = self.anim else {
             return true;
@@ -216,5 +260,6 @@ mod tests {
 
         assert_eq!(geoset.trace(&line), Some((0., 0., 0.).into()));
         assert!(geoset.visible(0, 0));
+        assert_eq!(geoset.evaluate_color(0, 0), (1., 1., 1., 1.).into());
     }
 }
