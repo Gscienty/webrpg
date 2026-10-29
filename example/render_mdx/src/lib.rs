@@ -1,8 +1,9 @@
 use std::io::Cursor;
 
 use renderer::{
+    ribbon,
     shader::{Program, builtin::MODEL_SHADER},
-    sprite::{RenderParams, Sprite, render_phase::RenderPhase},
+    sprite::{RenderParams, RenderState, Sprite, render_phase::RenderPhase},
     texture::Texture,
     texture_set::TextureSet,
 };
@@ -30,6 +31,8 @@ pub struct MdxRenderer {
     model_program: Program,
     animations: Vec<(String, [u32; 2])>,
     animation_interval: [u32; 2],
+    ribbon_state: ribbon::Instance,
+    last_elapsed_ms: u32,
     team: u32,
     view_projection: Matrix4,
 }
@@ -89,6 +92,7 @@ impl MdxRenderer {
         .map_err(js_error)?;
         let sprite =
             Sprite::new(&gl, model, Some(&mut archive), &mut texture_set).map_err(js_error)?;
+        let ribbon_state = sprite.create_ribbon_instance(1);
         let model_program = MODEL_SHADER.compile_program(&gl).map_err(js_error)?;
 
         Ok(Self {
@@ -98,6 +102,8 @@ impl MdxRenderer {
             model_program,
             animations,
             animation_interval,
+            ribbon_state,
+            last_elapsed_ms: 0,
             team: 1,
             view_projection,
         })
@@ -125,20 +131,23 @@ impl MdxRenderer {
             return Err(JsValue::from_str("invalid team index"));
         }
         self.team = team;
+        self.ribbon_state.team = team;
         Ok(())
     }
 
-    pub fn render(&self, elapsed_ms: u32) -> Result<(), JsValue> {
+    pub fn render(&mut self, elapsed_ms: u32) -> Result<(), JsValue> {
         self.gl.clear_color(0.035, 0.045, 0.06, 1.);
         self.gl.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
 
         let duration = (self.animation_interval[1] - self.animation_interval[0]).max(1);
         let frame = self.animation_interval[0] + elapsed_ms % duration;
+        let delta = elapsed_ms.saturating_sub(self.last_elapsed_ms);
+        self.last_elapsed_ms = elapsed_ms;
         for render_phase in [RenderPhase::Solid, RenderPhase::Alpha] {
             self.sprite
                 .render(
                     &self.gl,
-                    &RenderParams {
+                    RenderParams {
                         origin: Vector3::default(),
                         angle: 0.,
                         scale: 1.,
@@ -153,6 +162,7 @@ impl MdxRenderer {
                         global_time: elapsed_ms,
                         frame,
                         previous_frame: frame,
+                        delta,
                         view_projection: self.view_projection,
                         texture: Matrix4::identity(),
                         light: Matrix4::identity(),
@@ -162,6 +172,9 @@ impl MdxRenderer {
                         frustum: Frustum3::calculate(self.view_projection),
                         texture_set: &self.texture_set,
                         model_program: &self.model_program,
+                    },
+                    RenderState {
+                        ribbon: &mut self.ribbon_state,
                     },
                 )
                 .map_err(js_error)?;

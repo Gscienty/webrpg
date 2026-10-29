@@ -3,7 +3,11 @@ use std::pin::Pin;
 use fileformat::mdx;
 use web_sys::WebGl2RenderingContext;
 
-use crate::{Error, sprite::body::Body, texture_set::TextureSet};
+use crate::{
+    Error,
+    sprite::{body::Body, ribbon::Ribbon},
+    texture_set::TextureSet,
+};
 
 pub mod body;
 pub mod bound;
@@ -15,9 +19,11 @@ pub mod render_phase;
 mod utils;
 
 mod render;
+mod ribbon;
 mod trace;
 
 pub use render::RenderParams;
+pub use render::RenderState;
 pub use trace::TraceParam;
 
 pub struct Sprite<'s> {
@@ -25,6 +31,9 @@ pub struct Sprite<'s> {
 
     textures: Vec<usize>,
     body: Body<'s>,
+    ribbon: Ribbon,
+
+    selectable: bool,
 }
 
 impl<'s> Sprite<'s> {
@@ -51,15 +60,26 @@ impl<'s> Sprite<'s> {
         }
 
         let body = Body::new(gl, model_ref)?;
+        let ribbon = match Ribbon::new(gl) {
+            Ok(ribbon) => ribbon,
+            Err(error) => {
+                body.destroy(gl);
+                return Err(error);
+            }
+        };
 
         Ok(Self {
             model,
             textures,
             body,
+            ribbon,
+
+            selectable: true,
         })
     }
 
     pub fn destroy(self, gl: &WebGl2RenderingContext) {
+        self.ribbon.destroy(gl);
         self.body.destroy(gl);
     }
 }

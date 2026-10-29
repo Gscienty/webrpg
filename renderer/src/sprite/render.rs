@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    shader,
+    ribbon, shader,
     sprite::{render_phase::RenderPhase, utils},
     texture,
     texture_set::TextureSet,
@@ -18,11 +18,54 @@ use crate::{
     sprite::{Sprite, body::BodyRenderParams, node_matrix},
 };
 
+pub struct RenderParams<'s> {
+    pub origin: math3::Vector3,
+    pub angle: f32,
+    pub scale: f32,
+
+    pub no_frustum_cull: bool,
+    pub no_face_cull: bool,
+    pub no_lighting: bool,
+
+    pub render_phase: RenderPhase,
+    pub msaa_samples: u32,
+    pub lerpfrac: f32,
+    pub tint: color::Color32,
+    pub team: u32,
+
+    pub global_time: u32,
+    pub frame: u32,
+    pub previous_frame: u32,
+    pub delta: u32,
+
+    pub view_projection: math3::Matrix4,
+    pub texture: math3::Matrix4,
+    pub light: math3::Matrix4,
+
+    pub fog: Option<(
+        math3::Vector3, /* color */
+        math3::Vector2, /* range */
+    )>,
+
+    pub override_texture: Option<&'s texture::Texture>,
+    pub override_slot: u32,
+
+    pub frustum: math3::Frustum3,
+
+    pub texture_set: &'s TextureSet,
+    pub model_program: &'s shader::Program,
+}
+
+pub struct RenderState<'s> {
+    pub ribbon: &'s mut ribbon::Instance,
+}
+
 impl<'s> Sprite<'s> {
     pub fn render(
         &self,
         gl: &WebGl2RenderingContext,
-        render_param: &RenderParams,
+        render_param: RenderParams,
+        mut render_state: RenderState,
     ) -> Result<(), Error> {
         let model: &'s mdx::Model<'s> = unsafe { &*(self.model.as_ref().get_ref() as *const _) };
 
@@ -64,7 +107,7 @@ impl<'s> Sprite<'s> {
 
         self.body.render(
             gl,
-            render_param,
+            &render_param,
             BodyRenderParams {
                 model,
                 bone_matrices: &bone_matrices,
@@ -73,6 +116,16 @@ impl<'s> Sprite<'s> {
                 lights,
                 lights_count,
             },
+        )?;
+
+        self.render_ribbon(
+            gl,
+            &render_param,
+            &mut render_state,
+            transform,
+            &bone_matrices,
+            lights,
+            lights_count,
         )?;
 
         Ok(())
@@ -114,42 +167,4 @@ impl<'s> Sprite<'s> {
 
         result
     }
-}
-
-pub struct RenderParams<'s> {
-    pub origin: math3::Vector3,
-    pub angle: f32,
-    pub scale: f32,
-
-    pub no_frustum_cull: bool,
-    pub no_face_cull: bool,
-    pub no_lighting: bool,
-
-    pub render_phase: RenderPhase,
-    pub msaa_samples: u32,
-    pub lerpfrac: f32,
-    pub tint: color::Color32,
-    pub team: u32,
-
-    pub global_time: u32,
-    pub frame: u32,
-    pub previous_frame: u32,
-
-    pub view_projection: math3::Matrix4,
-    pub texture: math3::Matrix4,
-    pub light: math3::Matrix4,
-
-    pub fog: Option<(
-        math3::Vector3, /* color */
-        math3::Vector2, /* range */
-    )>,
-
-    pub override_texture: Option<&'s texture::Texture>,
-    pub override_slot: u32,
-
-    pub frustum: math3::Frustum3,
-
-    pub texture_set: &'s TextureSet,
-
-    pub model_program: &'s shader::Program,
 }

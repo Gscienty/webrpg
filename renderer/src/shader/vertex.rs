@@ -3,16 +3,17 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+use shared::{color, math3};
 use web_sys::WebGl2RenderingContext;
 
 use crate::shader::AttributeID;
 
 #[repr(C)]
 pub struct Vertex {
-    pub position: shared::math3::Vector3,
-    pub texcoord: shared::math3::Vector2,
-    pub normal: shared::math3::Vector3,
-    pub color: shared::color::Color32,
+    pub position: math3::Vector3,
+    pub texcoord: math3::Vector2,
+    pub normal: math3::Vector3,
+    pub color: color::Color32,
     pub skin: [u8; 4],
     pub bone_weight: [u8; 4],
 }
@@ -67,7 +68,7 @@ impl Vertices {
         self.0.is_empty()
     }
 
-    fn vertex(x: f32, y: f32, z: f32, u: f32, v: f32, color: shared::color::Color32) -> Vertex {
+    fn vertex(x: f32, y: f32, z: f32, u: f32, v: f32, color: color::Color32) -> Vertex {
         Vertex {
             position: (x, y, z).into(),
             texcoord: (u, v).into(),
@@ -80,9 +81,9 @@ impl Vertices {
 
     pub fn add_quad(
         &mut self,
-        screen: &shared::math3::Rect,
-        uv: &shared::math3::Rect,
-        color: shared::color::Color32,
+        screen: &math3::Rect,
+        uv: &math3::Rect,
+        color: color::Color32,
         z: f32,
     ) {
         self.0.extend([
@@ -123,7 +124,7 @@ impl Vertices {
         }
     }
 
-    pub fn add_strip(&mut self, screen: &shared::math3::Rect, color: shared::color::Color32) {
+    pub fn add_strip(&mut self, screen: &math3::Rect, color: color::Color32) {
         self.0.extend([
             Self::vertex(screen.x, screen.y, 0., 0., 0., color),
             Self::vertex(screen.x + screen.w, screen.y, 0., 0., 0., color),
@@ -133,7 +134,7 @@ impl Vertices {
         ]);
     }
 
-    pub fn add_wire_box(&mut self, box_: &shared::math3::Box3, color: shared::color::Color32) {
+    pub fn add_wire_box(&mut self, box_: &math3::Box3, color: color::Color32) {
         let min = &box_.min;
         let max = &box_.max;
 

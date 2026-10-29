@@ -2,6 +2,8 @@ mod desc;
 mod light;
 mod model_state;
 mod program;
+
+mod trail_vertex;
 mod vertex;
 
 pub use desc::{
@@ -9,10 +11,12 @@ pub use desc::{
     Varying,
 };
 pub use program::Program;
-pub use vertex::{Vertex, Vertices};
 
 pub use light::{EnvironLight, LightType, ModelLight, ModelLighting};
 
 pub use model_state::ModelState;
+
+pub use trail_vertex::{TrailVertex, TrailVertices};
+pub use vertex::{Vertex, Vertices};
 
 pub mod builtin;

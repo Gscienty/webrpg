@@ -1,4 +1,5 @@
 pub mod error;
+pub mod ribbon;
 pub mod shader;
 pub mod sprite;
 pub mod texture;
