@@ -118,15 +118,17 @@ impl<'s> Sprite<'s> {
             },
         )?;
 
-        self.render_ribbon(
-            gl,
-            &render_param,
-            &mut render_state,
-            transform,
-            &bone_matrices,
-            lights,
-            lights_count,
-        )?;
+        if matches!(render_param.render_phase, RenderPhase::Alpha) {
+            self.render_ribbon(
+                gl,
+                &render_param,
+                &mut render_state,
+                transform,
+                &bone_matrices,
+                lights,
+                lights_count,
+            )?;
+        }
 
         Ok(())
     }

@@ -5,7 +5,7 @@ use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlVertexArrayObject};
 
 use crate::{
     Error, ribbon, shader,
-    sprite::{RenderParams, RenderState, Sprite, material},
+    sprite::{RenderParams, RenderState, Sprite, material, utils},
 };
 
 pub(super) struct Ribbon {
@@ -185,6 +185,15 @@ impl<'s> Sprite<'s> {
             render_param.model_program.apply(gl, &state)?;
             gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
         }
+
+        gl.enable(WebGl2RenderingContext::CULL_FACE);
+        gl.depth_mask(true);
+        utils::set_alpha_key_state(
+            gl,
+            render_param.render_phase,
+            render_param.msaa_samples,
+            false,
+        );
 
         Ok(())
     }
