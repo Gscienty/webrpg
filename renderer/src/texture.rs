@@ -1,9 +1,10 @@
 use fileformat::image::{CompressImage, CompressImageFormat, Image, RawImage};
-use shared::color::{self, Color32};
+use shared::color;
 use web_sys::{WebGl2RenderingContext, WebGlTexture, WebglCompressedTextureS3tc};
 
 use crate::error::Error;
 
+#[derive(Clone)]
 pub struct Texture {
     gltex: WebGlTexture,
     pub width: u32,
@@ -36,19 +37,48 @@ impl Texture {
         )
     }
 
+    pub(crate) fn particle(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
+        const SIZE: usize = 8;
+        const DOT_TEXTURE: [[u8; SIZE]; SIZE] = [
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 1, 1, 1, 0, 0],
+            [0, 1, 2, 2, 2, 2, 1, 0],
+            [0, 1, 2, 2, 2, 2, 1, 0],
+            [0, 1, 2, 2, 2, 2, 1, 0],
+            [0, 1, 2, 2, 2, 2, 1, 0],
+            [0, 0, 1, 1, 1, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+        ];
+        let pixels: [color::Color32; SIZE * SIZE] = std::array::from_fn(|i| color::Color32 {
+            red: 255,
+            green: 255,
+            blue: 255,
+            alpha: DOT_TEXTURE[i / SIZE][i % SIZE] * 127,
+        });
+
+        Self::from_raw(
+            gl,
+            &[RawImage {
+                pixels: pixels.into(),
+                width: SIZE as u32,
+                height: SIZE as u32,
+            }],
+        )
+    }
+
     pub(crate) fn placeholder(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
         const SIZE: usize = 16;
-        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
-            let (x, y) = (i % 16, i / 16);
+        let pixels: [color::Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+            let (x, y) = (i % SIZE, i / SIZE);
             if (x ^ y) & 1 != 0 {
-                Color32 {
+                color::Color32 {
                     red: 255,
                     green: 0,
                     blue: 255,
                     alpha: 255,
                 }
             } else {
-                Color32 {
+                color::Color32 {
                     red: 0,
                     green: 0,
                     blue: 0,
@@ -69,7 +99,7 @@ impl Texture {
 
     pub(crate) fn shadow(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
         const SIZE: usize = 64;
-        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+        let pixels: [color::Color32; SIZE * SIZE] = std::array::from_fn(|i| {
             let x = i % SIZE;
             let y = i / SIZE;
             let fx = (x as f32 + 0.5) / SIZE as f32 * 2. - 1.;
@@ -77,7 +107,7 @@ impl Texture {
             let distance = (fx * fx + fy * fy).sqrt();
             let alpha = 1. - smooth_step(0.25, 1., distance);
 
-            Color32 {
+            color::Color32 {
                 red: 255,
                 green: 255,
                 blue: 255,
@@ -97,7 +127,7 @@ impl Texture {
 
     pub(crate) fn loading(gl: &WebGl2RenderingContext) -> Result<Self, Error> {
         const SIZE: usize = 128;
-        let pixels: [Color32; SIZE * SIZE] = std::array::from_fn(|i| {
+        let pixels: [color::Color32; SIZE * SIZE] = std::array::from_fn(|i| {
             let x = i % SIZE;
             let y = i / SIZE;
             let fx = 1. - (x as f32 + 0.5) / SIZE as f32 * 2.;
@@ -110,7 +140,7 @@ impl Texture {
             let ring = smooth_step(inner - edge, inner, distance)
                 * (1. - smooth_step(outer, outer + edge, distance));
 
-            Color32 {
+            color::Color32 {
                 red: 255,
                 green: 255,
                 blue: 255,
@@ -240,7 +270,7 @@ impl Texture {
     fn upload_raw(
         &self,
         gl: &WebGl2RenderingContext,
-        pixels: &[Color32],
+        pixels: &[color::Color32],
         width: u32,
         height: u32,
         level: usize,

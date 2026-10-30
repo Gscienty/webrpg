@@ -27,6 +27,7 @@ pub struct TextureSet {
     pub placeholder: Texture,
     pub shadow: Texture,
     pub loading: Texture,
+    pub particle: Texture,
 
     pub team_glow: Vec<Texture>,
     pub team_color: Vec<Texture>,
@@ -66,6 +67,7 @@ impl TextureSet {
             placeholder: Texture::placeholder(gl)?,
             shadow: Texture::shadow(gl)?,
             loading: Texture::loading(gl)?,
+            particle: Texture::particle(gl)?,
 
             team_glow: Vec::new(),
             team_color: Vec::new(),

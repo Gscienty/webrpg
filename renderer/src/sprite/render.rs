@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    ribbon, shader,
+    particle, ribbon, shader,
     sprite::{render_phase::RenderPhase, utils},
     texture,
     texture_set::TextureSet,
@@ -26,6 +26,8 @@ pub struct RenderParams<'s> {
     pub no_frustum_cull: bool,
     pub no_face_cull: bool,
     pub no_lighting: bool,
+    pub not_selectable: bool,
+    pub emission_paused: bool,
 
     pub render_phase: RenderPhase,
     pub msaa_samples: u32,
@@ -58,6 +60,7 @@ pub struct RenderParams<'s> {
 
 pub struct RenderState<'s> {
     pub ribbon: &'s mut ribbon::Instance,
+    pub particle: &'s mut particle::Resource,
 }
 
 impl<'s> Sprite<'s> {
@@ -128,6 +131,8 @@ impl<'s> Sprite<'s> {
                 lights,
                 lights_count,
             )?;
+        } else {
+            self.render_particle(&render_param, &mut render_state, transform, &bone_matrices);
         }
 
         Ok(())

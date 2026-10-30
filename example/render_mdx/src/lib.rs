@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use renderer::{
-    ribbon,
+    particle, ribbon,
     shader::{Program, builtin::MODEL_SHADER},
     sprite::{RenderParams, RenderState, Sprite, render_phase::RenderPhase},
     texture::Texture,
@@ -32,6 +32,7 @@ pub struct MdxRenderer {
     animations: Vec<(String, [u32; 2])>,
     animation_interval: [u32; 2],
     ribbon_state: ribbon::Instance,
+    particle_state: particle::Resource,
     last_elapsed_ms: u32,
     team: u32,
     view_projection: Matrix4,
@@ -93,6 +94,7 @@ impl MdxRenderer {
         let sprite =
             Sprite::new(&gl, model, Some(&mut archive), &mut texture_set).map_err(js_error)?;
         let ribbon_state = sprite.create_ribbon_instance(1);
+        let particle_state = particle::Resource::default();
         let model_program = MODEL_SHADER.compile_program(&gl).map_err(js_error)?;
 
         Ok(Self {
@@ -103,6 +105,7 @@ impl MdxRenderer {
             animations,
             animation_interval,
             ribbon_state,
+            particle_state,
             last_elapsed_ms: 0,
             team: 1,
             view_projection,
@@ -154,6 +157,8 @@ impl MdxRenderer {
                         no_frustum_cull: true,
                         no_face_cull: true,
                         no_lighting: true,
+                        not_selectable: false,
+                        emission_paused: false,
                         render_phase,
                         msaa_samples: 0,
                         lerpfrac: 0.,
@@ -175,6 +180,7 @@ impl MdxRenderer {
                     },
                     RenderState {
                         ribbon: &mut self.ribbon_state,
+                        particle: &mut self.particle_state,
                     },
                 )
                 .map_err(js_error)?;

@@ -7,6 +7,8 @@ edition = "2024"
 shared = { path = "../shared" }
 fileformat = { path = "../fileformat" }
 webrpg-mpq = { path = "../mpq" }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+rand = "0.9"
 web-sys = { version = "0.3", features = [
   "console",
   "WebGl2RenderingContext",

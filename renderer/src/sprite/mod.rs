@@ -15,6 +15,7 @@ pub mod bound;
 mod light;
 mod material;
 mod node_matrix;
+mod particle;
 pub mod render_phase;
 mod utils;
 
