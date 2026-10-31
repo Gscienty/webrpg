@@ -12,6 +12,10 @@ pub struct Texture {
 }
 
 impl Texture {
+    pub(crate) fn is_same(&self, other: &Self) -> bool {
+        self.gltex == other.gltex
+    }
+
     pub fn init(gl: &WebGl2RenderingContext) -> Result<(), Error> {
         gl.get_extension("WEBGL_compressed_texture_s3tc")
             .map_err(|_| Error::UnsupportedTextureFormat)?

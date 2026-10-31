@@ -35,7 +35,8 @@ pub static PARTICLE_SHADER: Descriptor<8, 8, 3> = Descriptor::new(
             ParticleState,
             texture,
             UniformType::Sampler2D,
-            PrecisionType::Low
+            PrecisionType::Low,
+            4
         ),
         uniform_declare!(
             ParticleState,
@@ -59,7 +60,7 @@ pub static PARTICLE_SHADER: Descriptor<8, 8, 3> = Descriptor::new(
     [
         attribute_declare!(position, AttributeID::Position, UniformType::FloatVec3),
         attribute_declare!(color, AttributeID::Color, UniformType::Color),
-        attribute_declare!(texcoord, AttributeID::Texcoord, UniformType::FloatVec2),
+        attribute_declare!(texcoord, AttributeID::Texcoord, UniformType::FloatVec3),
         attribute_declare!(size, AttributeID::ParticleSize, UniformType::Float),
         attribute_declare!(tail, AttributeID::ParticleTail, UniformType::FloatVec3),
         attribute_declare!(
@@ -72,7 +73,7 @@ pub static PARTICLE_SHADER: Descriptor<8, 8, 3> = Descriptor::new(
     ],
     [
         varying_declare!(color, UniformType::Color),
-        varying_declare!(texcoord, UniformType::FloatVec2),
+        varying_declare!(texcoord, UniformType::FloatVec3),
         varying_declare!(texcoord2, UniformType::FloatVec2),
     ],
     include_str!("../glsl/particle.vert.glsl"),

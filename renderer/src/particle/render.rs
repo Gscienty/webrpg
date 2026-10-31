@@ -27,6 +27,28 @@ impl ParticleRender {
         Ok(Self { vao, vbo, program })
     }
 
+    pub fn update(&self, gl: &WebGl2RenderingContext, vertices: &shader::ParticleVertices) {
+        gl.bind_vertex_array(Some(&self.vao));
+        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.vbo));
+        gl.buffer_data_with_u8_array(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            vertices.as_bytes(),
+            WebGl2RenderingContext::DYNAMIC_DRAW,
+        );
+    }
+
+    pub(crate) fn bind(&self, gl: &WebGl2RenderingContext) {
+        gl.bind_vertex_array(Some(&self.vao));
+    }
+
+    pub(crate) fn apply(
+        &self,
+        gl: &WebGl2RenderingContext,
+        state: &shader::ParticleState,
+    ) -> Result<(), Error> {
+        self.program.apply(gl, state)
+    }
+
     pub fn destroy(self, gl: &WebGl2RenderingContext) {
         gl.delete_vertex_array(Some(&self.vao));
         gl.delete_buffer(Some(&self.vbo));

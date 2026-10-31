@@ -132,7 +132,7 @@ impl<'s> Sprite<'s> {
                 lights_count,
             )?;
         } else {
-            self.render_particle(&render_param, &mut render_state, transform, &bone_matrices);
+            self.prepare_particle(&render_param, &mut render_state, transform, &bone_matrices);
         }
 
         Ok(())

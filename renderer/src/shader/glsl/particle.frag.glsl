@@ -1,5 +1,10 @@
 vec4 frag() {
-    vec4 col = texture(u_texture, v_texcoord) * v_color;
+    vec4 texel;
+    if (v_texcoord.z < 0.5) texel = texture(u_texture[0], v_texcoord.xy);
+    else if (v_texcoord.z < 1.5) texel = texture(u_texture[1], v_texcoord.xy);
+    else if (v_texcoord.z < 2.5) texel = texture(u_texture[2], v_texcoord.xy);
+    else texel = texture(u_texture[3], v_texcoord.xy);
+    vec4 col = texel * v_color;
     col.rgb *= texture(u_fog_of_war, v_texcoord2).r;
     if (u_alpha_key) {
 #ifndef BZ_USE_MSAA

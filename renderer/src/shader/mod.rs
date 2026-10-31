@@ -19,7 +19,7 @@ pub use light::{EnvironLight, LightType, ModelLight, ModelLighting};
 
 pub use model_state::ModelState;
 pub use particle_state::ParticleState;
-pub use particle_vertex::{ParticleVertex, ParticleVertices};
+pub use particle_vertex::{ParticleQuad, ParticleUvOrder, ParticleVertex, ParticleVertices};
 
 pub use trail_vertex::{TrailVertex, TrailVertices};
 pub use vertex::{Vertex, Vertices};

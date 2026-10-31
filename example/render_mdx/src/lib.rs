@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use renderer::{
     particle, ribbon,
-    shader::{Program, builtin::MODEL_SHADER},
+    shader::{ParticleState, Program, builtin::MODEL_SHADER},
     sprite::{RenderParams, RenderState, Sprite, render_phase::RenderPhase},
     texture::Texture,
     texture_set::TextureSet,
@@ -33,6 +33,8 @@ pub struct MdxRenderer {
     animation_interval: [u32; 2],
     ribbon_state: ribbon::Instance,
     particle_state: particle::Resource,
+    particle_render: particle::ParticleRender,
+    particle_shader_state: ParticleState,
     last_elapsed_ms: u32,
     team: u32,
     view_projection: Matrix4,
@@ -95,6 +97,14 @@ impl MdxRenderer {
             Sprite::new(&gl, model, Some(&mut archive), &mut texture_set).map_err(js_error)?;
         let ribbon_state = sprite.create_ribbon_instance(1);
         let particle_state = particle::Resource::default();
+        let particle_render = particle::ParticleRender::new(&gl).map_err(js_error)?;
+        let particle_shader_state = ParticleState {
+            view_projection,
+            texture_matrix: Matrix4::identity(),
+            model: Matrix4::identity(),
+            eye,
+            ..Default::default()
+        };
         let model_program = MODEL_SHADER.compile_program(&gl).map_err(js_error)?;
 
         Ok(Self {
@@ -106,6 +116,8 @@ impl MdxRenderer {
             animation_interval,
             ribbon_state,
             particle_state,
+            particle_render,
+            particle_shader_state,
             last_elapsed_ms: 0,
             team: 1,
             view_projection,
@@ -185,6 +197,15 @@ impl MdxRenderer {
                 )
                 .map_err(js_error)?;
         }
+        self.texture_set.white.bind(&self.gl, 4);
+        self.particle_state
+            .draw(
+                &self.gl,
+                &self.particle_render,
+                &mut self.particle_shader_state,
+                delta,
+            )
+            .map_err(js_error)?;
         Ok(())
     }
 }

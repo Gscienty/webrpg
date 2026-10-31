@@ -4,9 +4,15 @@ use fileformat::mdx;
 use shared::{BlendMode, math3};
 
 use crate::{
-    particle::{Particle, utils::generate_random_direction},
+    Error,
+    particle::{
+        Batch, PARTICLE_TEXTURES, Particle, ParticleRender, utils::generate_random_direction,
+    },
+    shader,
+    texture::Texture,
     texture_set::TextureSet,
 };
+use web_sys::WebGl2RenderingContext;
 
 const PARTICLE_HEAD: u32 = 0;
 const PARTICLE_BOTH: u32 = 2;
@@ -15,12 +21,174 @@ const EMIT_BUDGET: u32 = 256;
 
 #[derive(Default)]
 pub struct Resource {
-    pub particles: Vec<Particle>,
+    particles: Vec<Particle>,
 
     accumulators: BTreeMap<(usize, u32), f64>,
 }
 
 impl Resource {
+    pub fn clear(&mut self) {
+        self.particles.clear();
+    }
+
+    pub fn update(&mut self, delta_ms: u32) {
+        let frame_time = delta_ms as f32 / 1000.;
+        self.particles.retain_mut(|particle| {
+            particle.time += frame_time;
+            particle.time <= particle.lifespan
+        });
+    }
+
+    pub fn draw(
+        &mut self,
+        gl: &WebGl2RenderingContext,
+        render: &ParticleRender,
+        state: &mut shader::ParticleState,
+        delta_ms: u32,
+    ) -> Result<(), Error> {
+        const VERTICES_PER_PARTICLE: u32 = 6;
+
+        self.update(delta_ms);
+        if self.particles.is_empty() {
+            return Ok(());
+        }
+
+        let mut vertices = shader::ParticleVertices::default();
+        let mut batches = Vec::new();
+        let mut batch = Batch::default();
+        for particle in &self.particles {
+            if particle.texture.is_none() {
+                continue;
+            }
+
+            let mut slot = batch.texture_slot(particle);
+            if slot == PARTICLE_TEXTURES {
+                batches.push(batch);
+                batch = Batch {
+                    first: vertices.len() as u32,
+                    ..Default::default()
+                };
+                slot = batch.texture_slot(particle);
+            }
+
+            let velocity = particle.vel + particle.accel * (0.5 * particle.time);
+            let origin = particle.org + velocity * particle.time;
+            vertices.add(
+                origin,
+                particle.tail,
+                particle.quad_right,
+                particle.quad_up,
+                particle.get_frame(),
+                particle.blend_color(),
+                particle.blend_size(),
+            );
+            vertices.set_last_quad_texture_slot(slot);
+            batch.count += VERTICES_PER_PARTICLE;
+        }
+        if batch.count != 0 {
+            batches.push(batch);
+        }
+        if batches.is_empty() {
+            return Ok(());
+        }
+
+        render.update(gl, &vertices);
+        let cull_enabled = gl.is_enabled(WebGl2RenderingContext::CULL_FACE);
+        gl.disable(WebGl2RenderingContext::CULL_FACE);
+        state.model = math3::Matrix4::identity();
+        let mut bound = [None; PARTICLE_TEXTURES as usize];
+        let result = batches
+            .iter()
+            .try_for_each(|batch| self.draw_batch(gl, render, state, batch, &mut bound));
+        if cull_enabled {
+            gl.enable(WebGl2RenderingContext::CULL_FACE);
+        }
+        state.alpha_key = false;
+        gl.disable(WebGl2RenderingContext::SAMPLE_ALPHA_TO_COVERAGE);
+
+        result
+    }
+
+    pub fn draw_batch<'a>(
+        &self,
+        gl: &WebGl2RenderingContext,
+        render: &ParticleRender,
+        state: &mut shader::ParticleState,
+        batch: &Batch<'a>,
+        bound: &mut [Option<&'a Texture>; PARTICLE_TEXTURES as usize],
+    ) -> Result<(), Error> {
+        if batch.count == 0 || batch.texcount == 0 {
+            return Ok(());
+        }
+
+        let Some(first_texture) = batch.textures.first().copied().flatten() else {
+            return Ok(());
+        };
+        for (slot, current) in bound.iter_mut().enumerate() {
+            let texture = if slot < batch.texcount as usize {
+                let Some(texture) = batch.textures.get(slot).copied().flatten() else {
+                    return Ok(());
+                };
+                texture
+            } else {
+                first_texture
+            };
+            if current.is_some_and(|current| current.is_same(texture)) {
+                continue;
+            }
+            texture.bind(gl, slot as u32);
+            *current = Some(texture);
+        }
+        gl.active_texture(WebGl2RenderingContext::TEXTURE0);
+
+        let alpha_key = batch.blend_mode == BlendMode::AlphaKey;
+        state.alpha_key = alpha_key;
+        state.alpha_cutoff = 0.5;
+        gl.disable(WebGl2RenderingContext::SAMPLE_ALPHA_TO_COVERAGE);
+        match batch.blend_mode {
+            BlendMode::None | BlendMode::AlphaKey => {
+                gl.disable(WebGl2RenderingContext::BLEND);
+                gl.depth_mask(true);
+                gl.blend_func(WebGl2RenderingContext::ONE, WebGl2RenderingContext::ZERO);
+            }
+            blend_mode => {
+                gl.enable(WebGl2RenderingContext::BLEND);
+                gl.depth_mask(false);
+                let (source, destination) = match blend_mode {
+                    BlendMode::Add => (
+                        WebGl2RenderingContext::SRC_ALPHA,
+                        WebGl2RenderingContext::ONE,
+                    ),
+                    BlendMode::AddAlpha => {
+                        (WebGl2RenderingContext::ONE, WebGl2RenderingContext::ONE)
+                    }
+                    BlendMode::Modulate => (
+                        WebGl2RenderingContext::ZERO,
+                        WebGl2RenderingContext::SRC_COLOR,
+                    ),
+                    BlendMode::Modulate2X => (
+                        WebGl2RenderingContext::DST_COLOR,
+                        WebGl2RenderingContext::SRC_COLOR,
+                    ),
+                    _ => (
+                        WebGl2RenderingContext::SRC_ALPHA,
+                        WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA,
+                    ),
+                };
+                gl.blend_func(source, destination);
+            }
+        }
+
+        render.bind(gl);
+        render.apply(gl, state)?;
+        gl.draw_arrays(
+            WebGl2RenderingContext::TRIANGLES,
+            batch.first as i32,
+            batch.count as i32,
+        );
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn emit(
         &mut self,
@@ -241,5 +409,29 @@ mod tests {
 
         assert_eq!(emit_count(10_000., &mut accumulator, 1_000), EMIT_BUDGET);
         assert!(accumulator < 1.);
+    }
+
+    #[test]
+    fn update_advances_and_removes_expired_particles() {
+        let mut resource = Resource {
+            particles: vec![
+                Particle {
+                    time: 0.5,
+                    lifespan: 1.,
+                    ..Default::default()
+                },
+                Particle {
+                    time: 0.9,
+                    lifespan: 1.,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        resource.update(200);
+
+        assert_eq!(resource.particles.len(), 1);
+        assert_eq!(resource.particles[0].time, 0.7);
     }
 }

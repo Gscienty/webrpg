@@ -6,7 +6,7 @@ use shared::math3;
 use crate::sprite::{RenderParams, RenderState, Sprite};
 
 impl<'s> Sprite<'s> {
-    pub(super) fn render_particle(
+    pub(super) fn prepare_particle(
         &self,
         render_param: &RenderParams,
         render_state: &mut RenderState,
