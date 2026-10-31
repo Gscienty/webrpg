@@ -162,6 +162,12 @@ impl<'s> Sprite<'s> {
                 continue;
             }
             material::layer_apply_flags(gl, layer);
+            if render_param.no_depth_test {
+                gl.disable(WebGl2RenderingContext::DEPTH_TEST);
+            }
+            if render_param.no_depth_write {
+                gl.depth_mask(false);
+            }
 
             let model_texture_id =
                 layer.evaluate_texture_id(render_param.global_time, render_param.frame);

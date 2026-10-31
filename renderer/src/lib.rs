@@ -8,4 +8,6 @@ pub mod particle;
 pub mod ribbon;
 pub mod sprite;
 
+pub mod sky;
+
 pub use error::Error;

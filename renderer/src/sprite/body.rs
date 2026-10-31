@@ -430,6 +430,12 @@ impl<'s> Geoset<'s> {
             }
 
             material::layer_apply_flags(gl, layer);
+            if render_param.no_depth_test {
+                gl.disable(WebGl2RenderingContext::DEPTH_TEST);
+            }
+            if render_param.no_depth_write {
+                gl.depth_mask(false);
+            }
 
             state.unshaded =
                 render_param.no_lighting || layer.flags & mdx::GeoFlag::Unshared as u32 != 0;

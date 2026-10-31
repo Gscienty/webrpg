@@ -18,6 +18,7 @@ use crate::{
     sprite::{Sprite, body::BodyRenderParams, node_matrix},
 };
 
+#[derive(Clone, Copy)]
 pub struct RenderParams<'s> {
     pub origin: math3::Vector3,
     pub angle: f32,
@@ -26,6 +27,8 @@ pub struct RenderParams<'s> {
     pub no_frustum_cull: bool,
     pub no_face_cull: bool,
     pub no_lighting: bool,
+    pub no_depth_test: bool,
+    pub no_depth_write: bool,
     pub not_selectable: bool,
     pub emission_paused: bool,
 
@@ -68,7 +71,7 @@ impl<'s> Sprite<'s> {
         &self,
         gl: &WebGl2RenderingContext,
         render_param: RenderParams,
-        mut render_state: RenderState,
+        mut render_state: Option<RenderState>,
     ) -> Result<(), Error> {
         let model: &'s mdx::Model<'s> = unsafe { &*(self.model.as_ref().get_ref() as *const _) };
 
@@ -121,18 +124,20 @@ impl<'s> Sprite<'s> {
             },
         )?;
 
-        if matches!(render_param.render_phase, RenderPhase::Alpha) {
-            self.render_ribbon(
-                gl,
-                &render_param,
-                &mut render_state,
-                transform,
-                &bone_matrices,
-                lights,
-                lights_count,
-            )?;
-        } else {
-            self.prepare_particle(&render_param, &mut render_state, transform, &bone_matrices);
+        if let Some(render_state) = render_state.as_mut() {
+            if matches!(render_param.render_phase, RenderPhase::Alpha) {
+                self.render_ribbon(
+                    gl,
+                    &render_param,
+                    render_state,
+                    transform,
+                    &bone_matrices,
+                    lights,
+                    lights_count,
+                )?;
+            } else {
+                self.prepare_particle(&render_param, render_state, transform, &bone_matrices);
+            }
         }
 
         Ok(())
