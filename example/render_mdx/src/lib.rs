@@ -3,6 +3,7 @@ use std::io::Cursor;
 use renderer::{
     particle, ribbon,
     shader::{ParticleState, Program, builtin::MODEL_SHADER},
+    sky::Sky,
     sprite::{RenderParams, RenderState, Sprite, render_phase::RenderPhase},
     texture::Texture,
     texture_set::TextureSet,
@@ -13,6 +14,8 @@ use shared::{
 };
 use wasm_bindgen::{JsCast, JsValue, prelude::wasm_bindgen};
 use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as Gl};
+
+const SKY_PATH: &str = "Environment\\Sky\\LordaeronSummerSky\\LordaeronSummerSky.mdx";
 
 #[wasm_bindgen]
 pub fn list_mpq_files(name: &str, data: &[u8]) -> Result<String, JsValue> {
@@ -27,6 +30,7 @@ pub fn list_mpq_files(name: &str, data: &[u8]) -> Result<String, JsValue> {
 pub struct MdxRenderer {
     gl: Gl,
     sprite: Sprite<'static>,
+    sky: Option<Sky<'static>>,
     texture_set: TextureSet,
     model_program: Program,
     animations: Vec<(String, [u32; 2])>,
@@ -37,6 +41,7 @@ pub struct MdxRenderer {
     particle_shader_state: ParticleState,
     last_elapsed_ms: u32,
     team: u32,
+    eye: Vector3,
     view_projection: Matrix4,
 }
 
@@ -72,7 +77,7 @@ impl MdxRenderer {
                 45_f32.to_radians(),
                 width as f32 / height.max(1) as f32,
                 (radius * 0.01).max(0.1),
-                radius * 20.,
+                (radius * 20.).max(10_000.),
             )
             .look_at(eye, center - eye, (0., 0., 1.).into());
         let animations: Vec<_> = model
@@ -95,6 +100,14 @@ impl MdxRenderer {
         .map_err(js_error)?;
         let sprite =
             Sprite::new(&gl, model, Some(&mut archive), &mut texture_set).map_err(js_error)?;
+        let sky = if mpq_name.eq_ignore_ascii_case("war3.mpq") {
+            let sky_data = archive.read_file(SKY_PATH).map_err(js_error)?;
+            let sky_model =
+                fileformat::mdx::Model::read(&mut Cursor::new(sky_data)).map_err(js_error)?;
+            Some(Sky::new(&gl, sky_model, Some(&mut archive), &mut texture_set).map_err(js_error)?)
+        } else {
+            None
+        };
         let ribbon_state = sprite.create_ribbon_instance(1);
         let particle_state = particle::Resource::default();
         let particle_render = particle::ParticleRender::new(&gl).map_err(js_error)?;
@@ -110,6 +123,7 @@ impl MdxRenderer {
         Ok(Self {
             gl,
             sprite,
+            sky,
             texture_set,
             model_program,
             animations,
@@ -120,6 +134,7 @@ impl MdxRenderer {
             particle_shader_state,
             last_elapsed_ms: 0,
             team: 1,
+            eye,
             view_projection,
         })
     }
@@ -158,6 +173,17 @@ impl MdxRenderer {
         let frame = self.animation_interval[0] + elapsed_ms % duration;
         let delta = elapsed_ms.saturating_sub(self.last_elapsed_ms);
         self.last_elapsed_ms = elapsed_ms;
+        if let Some(sky) = &self.sky {
+            sky.render(
+                &self.gl,
+                self.eye,
+                elapsed_ms,
+                self.view_projection,
+                &self.texture_set,
+                &self.model_program,
+            )
+            .map_err(js_error)?;
+        }
         for render_phase in [RenderPhase::Solid, RenderPhase::Alpha] {
             self.sprite
                 .render(
@@ -169,6 +195,8 @@ impl MdxRenderer {
                         no_frustum_cull: true,
                         no_face_cull: true,
                         no_lighting: true,
+                        no_depth_test: false,
+                        no_depth_write: false,
                         not_selectable: false,
                         emission_paused: false,
                         render_phase,
@@ -190,10 +218,10 @@ impl MdxRenderer {
                         texture_set: &self.texture_set,
                         model_program: &self.model_program,
                     },
-                    RenderState {
+                    Some(RenderState {
                         ribbon: &mut self.ribbon_state,
                         particle: &mut self.particle_state,
-                    },
+                    }),
                 )
                 .map_err(js_error)?;
         }
