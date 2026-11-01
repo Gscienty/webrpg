@@ -8,6 +8,7 @@ pub struct ParticleState {
     pub fog_of_war: i32,
     pub alpha_key: bool,
     pub alpha_cutoff: f32,
+    pub modulate: i32,
 }
 
 impl Default for ParticleState {
@@ -21,6 +22,7 @@ impl Default for ParticleState {
             fog_of_war: 4,
             alpha_key: false,
             alpha_cutoff: 0.5,
+            modulate: 0,
         }
     }
 }

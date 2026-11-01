@@ -41,7 +41,7 @@ pub struct TextureSet {
 
 impl TextureSet {
     fn load_image<T>(
-        mpq: &mut webrpg_mpq::Archive,
+        mpq: &mut dyn webrpg_mpq::Archive,
         path: &str,
         convert: impl FnOnce(Image<'_>) -> Result<T, Error>,
     ) -> Result<T, Error> {
@@ -51,7 +51,7 @@ impl TextureSet {
 
     fn load_mpq_texture(
         gl: &WebGl2RenderingContext,
-        mpq: &mut webrpg_mpq::Archive,
+        mpq: &mut dyn webrpg_mpq::Archive,
         path: &str,
     ) -> Result<Texture, Error> {
         Self::load_image(mpq, path, |image| Texture::new(gl, image))
@@ -59,7 +59,7 @@ impl TextureSet {
 
     pub fn init(
         gl: &WebGl2RenderingContext,
-        war3_mpq: Option<&mut webrpg_mpq::Archive>,
+        war3_mpq: Option<&mut dyn webrpg_mpq::Archive>,
     ) -> Result<Self, Error> {
         let mut textures = Self {
             white: Texture::color(gl, color::Color32::white())?,
@@ -113,7 +113,7 @@ impl TextureSet {
     pub fn load_texture(
         &mut self,
         gl: &WebGl2RenderingContext,
-        mpq: &mut webrpg_mpq::Archive,
+        mpq: &mut dyn webrpg_mpq::Archive,
         path: &str,
     ) -> Result<usize, Error> {
         let key = (mpq.id().to_owned(), path.to_owned());

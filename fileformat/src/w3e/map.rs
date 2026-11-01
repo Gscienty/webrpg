@@ -2,7 +2,7 @@ use std::io::{self, Read};
 
 use shared::math3;
 
-use crate::w3m::Vertex;
+use crate::w3e::Vertex;
 
 const VERTEX_BATCH: usize = 256;
 const VERTEX_FILE_SIZE: usize = 7;

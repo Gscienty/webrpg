@@ -1,5 +1,6 @@
 use std::io::Cursor;
 
+use js_sys::{Array, Uint8Array};
 use renderer::{
     particle, ribbon,
     shader::{ParticleState, Program, builtin::MODEL_SHADER},
@@ -14,12 +15,13 @@ use shared::{
 };
 use wasm_bindgen::{JsCast, JsValue, prelude::wasm_bindgen};
 use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as Gl};
+use webrpg_mpq::Archive as _;
 
 const SKY_PATH: &str = "Environment\\Sky\\LordaeronSummerSky\\LordaeronSummerSky.mdx";
 
 #[wasm_bindgen]
 pub fn list_mpq_files(name: &str, data: &[u8]) -> Result<String, JsValue> {
-    let mut archive = webrpg_mpq::Archive::load(name, data.to_vec()).map_err(js_error)?;
+    let mut archive = webrpg_mpq::MpqArchive::load(name, data.to_vec()).map_err(js_error)?;
     archive
         .list_files()
         .map(|files| files.join("\n"))
@@ -50,8 +52,8 @@ impl MdxRenderer {
     #[wasm_bindgen(constructor)]
     pub fn new(
         canvas: HtmlCanvasElement,
-        mpq_name: &str,
-        mpq_data: &[u8],
+        mpq_names: Array,
+        mpq_data: Array,
         mdx_path: &str,
     ) -> Result<MdxRenderer, JsValue> {
         let gl = canvas
@@ -64,8 +66,11 @@ impl MdxRenderer {
         gl.enable(Gl::DEPTH_TEST);
         Texture::init(&gl).map_err(js_error)?;
 
-        let mut archive =
-            webrpg_mpq::Archive::load(mpq_name, mpq_data.to_vec()).map_err(js_error)?;
+        let has_war3 = mpq_names
+            .iter()
+            .filter_map(|name| name.as_string())
+            .any(|name| name.eq_ignore_ascii_case("war3.mpq"));
+        let mut archive = load_archives(&mpq_names, &mpq_data)?;
         let mdx = archive.read_file(mdx_path).map_err(js_error)?;
         let model = fileformat::mdx::Model::read(&mut Cursor::new(mdx)).map_err(js_error)?;
 
@@ -92,7 +97,7 @@ impl MdxRenderer {
             .map(|(_, interval)| *interval)
             .unwrap_or_default();
 
-        let mut texture_set = if mpq_name.eq_ignore_ascii_case("war3.mpq") {
+        let mut texture_set = if has_war3 {
             TextureSet::init(&gl, Some(&mut archive))
         } else {
             TextureSet::init(&gl, None)
@@ -100,7 +105,7 @@ impl MdxRenderer {
         .map_err(js_error)?;
         let sprite =
             Sprite::new(&gl, model, Some(&mut archive), &mut texture_set).map_err(js_error)?;
-        let sky = if mpq_name.eq_ignore_ascii_case("war3.mpq") {
+        let sky = if has_war3 {
             let sky_data = archive.read_file(SKY_PATH).map_err(js_error)?;
             let sky_model =
                 fileformat::mdx::Model::read(&mut Cursor::new(sky_data)).map_err(js_error)?;
@@ -236,6 +241,25 @@ impl MdxRenderer {
             .map_err(js_error)?;
         Ok(())
     }
+}
+
+fn load_archives(names: &Array, data: &Array) -> Result<webrpg_mpq::MultiArchive, JsValue> {
+    if names.length() == 0 || names.length() != data.length() {
+        return Err(JsValue::from_str("invalid MPQ archive set"));
+    }
+
+    let mut archives: Vec<Box<dyn webrpg_mpq::Archive>> =
+        Vec::with_capacity(names.length() as usize);
+    for index in 0..names.length() {
+        let name = names
+            .get(index)
+            .as_string()
+            .ok_or_else(|| JsValue::from_str("invalid MPQ name"))?;
+        let bytes = Uint8Array::new(&data.get(index)).to_vec();
+        let archive = webrpg_mpq::MpqArchive::load(name, bytes).map_err(js_error)?;
+        archives.push(Box::new(archive));
+    }
+    Ok(webrpg_mpq::MultiArchive::new(archives))
 }
 
 fn js_error(error: impl std::fmt::Display) -> JsValue {

@@ -6,6 +6,10 @@ vec4 frag() {
     else texel = texture(u_texture[3], v_texcoord.xy);
     vec4 col = texel * v_color;
     col.rgb *= texture(u_fog_of_war, v_texcoord2).r;
+    if (u_modulate != 0) {
+        float neutral = u_modulate == 2 ? 0.5 : 1.0;
+        col.rgb = mix(vec3(neutral), col.rgb, v_color.a);
+    }
     if (u_alpha_key) {
 #ifndef BZ_USE_MSAA
         if (col.a < u_alpha_cutoff) discard;

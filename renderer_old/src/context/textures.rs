@@ -39,7 +39,7 @@ pub struct Textures {
 impl Textures {
     pub(super) fn init(
         gl: &WebGl2RenderingContext,
-        war3_mpq: Option<&mut webrpg_mpq::Archive>,
+        war3_mpq: Option<&mut dyn webrpg_mpq::Archive>,
     ) -> Result<Self, Error> {
         let mut textures = Self {
             white_texture: Texture::white(gl)?,
@@ -93,7 +93,7 @@ impl Textures {
     pub fn load_texture(
         &mut self,
         gl: &WebGl2RenderingContext,
-        mpq: &mut webrpg_mpq::Archive,
+        mpq: &mut dyn webrpg_mpq::Archive,
         path: &str,
     ) -> Result<usize, Error> {
         let key = (mpq.id().to_owned(), path.to_owned());

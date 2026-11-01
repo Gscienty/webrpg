@@ -54,7 +54,7 @@ impl Context {
         window_height: u32,
         drawable_width: u32,
         drawable_height: u32,
-        war3_mpq: Option<&mut webrpg_mpq::Archive>,
+        war3_mpq: Option<&mut dyn webrpg_mpq::Archive>,
     ) -> Result<Self, Error> {
         gl.disable(WebGl2RenderingContext::DEPTH_TEST);
         gl.clear_color(0., 0., 0., 1.);

@@ -300,7 +300,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webrpg-parse-w3m-example"
+name = "webrpg-parse-w3e-example"
 version = "0.1.0"
 dependencies = [
  "fileformat",

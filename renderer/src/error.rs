@@ -11,6 +11,8 @@ pub enum Error {
     InvalidUniformData(&'static str),
     UnsupportedTextureFormat,
     NoImageData,
+    InvalidShadowMapSize,
+    MissingMiniMap,
     CreateTextureFailed,
     UploadTextureFailed,
 }
@@ -33,6 +35,8 @@ impl std::fmt::Display for Error {
             Self::InvalidUniformData(name) => write!(formatter, "invalid uniform data: {name}"),
             Self::UnsupportedTextureFormat => formatter.write_str("unsupported texture format"),
             Self::NoImageData => formatter.write_str("texture has no image data"),
+            Self::InvalidShadowMapSize => formatter.write_str("invalid shadow map size"),
+            Self::MissingMiniMap => formatter.write_str("map has no minimap image"),
             Self::CreateTextureFailed => formatter.write_str("failed to create WebGL texture"),
             Self::UploadTextureFailed => formatter.write_str("failed to upload WebGL texture"),
         }

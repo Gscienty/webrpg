@@ -417,6 +417,7 @@ name = "webrpg-render-mdx-example"
 version = "0.1.0"
 dependencies = [
  "fileformat",
+ "js-sys",
  "renderer",
  "shared",
  "wasm-bindgen",

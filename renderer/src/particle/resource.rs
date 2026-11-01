@@ -104,6 +104,7 @@ impl Resource {
             gl.enable(WebGl2RenderingContext::CULL_FACE);
         }
         state.alpha_key = false;
+        state.modulate = 0;
         gl.disable(WebGl2RenderingContext::SAMPLE_ALPHA_TO_COVERAGE);
 
         result
@@ -144,6 +145,7 @@ impl Resource {
         let alpha_key = batch.blend_mode == BlendMode::AlphaKey;
         state.alpha_key = alpha_key;
         state.alpha_cutoff = 0.5;
+        state.modulate = particle_modulate_mode(batch.blend_mode);
         gl.disable(WebGl2RenderingContext::SAMPLE_ALPHA_TO_COVERAGE);
         match batch.blend_mode {
             BlendMode::None | BlendMode::AlphaKey => {
@@ -305,6 +307,11 @@ impl Resource {
             color: [emitter.color(0), emitter.color(1), emitter.color(2)],
             ..Default::default()
         };
+        set_uv_curve(
+            &mut particle,
+            emitter.lifespan_uv_anim,
+            emitter.decay_uv_anim,
+        );
         if emitter.node.flags & NODE_XY_QUAD != 0 {
             particle.quad_right = orientation_matrix * math3::Vector3::from((1., 0., 0.));
             particle.quad_up = orientation_matrix * math3::Vector3::from((0., 1., 0.));
@@ -315,10 +322,26 @@ impl Resource {
             self.particles.push(particle.clone());
         }
         if emitter.frame_flags != PARTICLE_HEAD {
+            set_uv_curve(
+                &mut particle,
+                emitter.tail_uv_anim,
+                emitter.tail_decay_uv_anim,
+            );
             particle.tail = particle.vel * emitter.tail_length;
         }
         self.particles.push(particle);
     }
+}
+
+fn set_uv_curve(
+    particle: &mut Particle,
+    lifespan: mdx::ParticleAnimation,
+    decay: mdx::ParticleAnimation,
+) {
+    particle.uv_start = lifespan.start.min(u16::MAX as u32) as u16;
+    particle.uv_mid = lifespan.end.min(u16::MAX as u32) as u16;
+    particle.uv_end = decay.end.min(u16::MAX as u32) as u16;
+    particle.use_uv_curve = true;
 }
 
 fn emit_count(rate: f32, accumulator: &mut f64, delta_ms: u32) -> u32 {
@@ -345,10 +368,18 @@ fn particle_blend_mode(filter_mode: u32) -> BlendMode {
     match filter_mode {
         0 => BlendMode::Blend,
         1 => BlendMode::Add,
-        2 => BlendMode::Modulate,
+        2 => BlendMode::Blend,
         3 => BlendMode::Modulate2X,
         4 => BlendMode::AlphaKey,
         _ => BlendMode::Blend,
+    }
+}
+
+fn particle_modulate_mode(blend_mode: BlendMode) -> i32 {
+    match blend_mode {
+        BlendMode::Modulate => 1,
+        BlendMode::Modulate2X => 2,
+        _ => 0,
     }
 }
 
@@ -373,10 +404,41 @@ mod tests {
     fn maps_particle_filter_modes() {
         assert_eq!(particle_blend_mode(0), BlendMode::Blend);
         assert_eq!(particle_blend_mode(1), BlendMode::Add);
-        assert_eq!(particle_blend_mode(2), BlendMode::Modulate);
+        assert_eq!(particle_blend_mode(2), BlendMode::Blend);
         assert_eq!(particle_blend_mode(3), BlendMode::Modulate2X);
         assert_eq!(particle_blend_mode(4), BlendMode::AlphaKey);
         assert_eq!(particle_blend_mode(u32::MAX), BlendMode::Blend);
+    }
+
+    #[test]
+    fn selects_modulate_shader_neutral() {
+        assert_eq!(particle_modulate_mode(BlendMode::Modulate), 1);
+        assert_eq!(particle_modulate_mode(BlendMode::Modulate2X), 2);
+        assert_eq!(particle_modulate_mode(BlendMode::Add), 0);
+    }
+
+    #[test]
+    fn applies_authored_particle_uv_curve() {
+        let mut particle = Particle::default();
+        set_uv_curve(
+            &mut particle,
+            mdx::ParticleAnimation {
+                start: 4,
+                end: 9,
+                repeat: 1,
+            },
+            mdx::ParticleAnimation {
+                start: 10,
+                end: 15,
+                repeat: 1,
+            },
+        );
+
+        assert!(particle.use_uv_curve);
+        assert_eq!(
+            (particle.uv_start, particle.uv_mid, particle.uv_end),
+            (4, 9, 15)
+        );
     }
 
     #[test]

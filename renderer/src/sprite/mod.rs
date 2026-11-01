@@ -42,7 +42,7 @@ impl<'s> Sprite<'s> {
         gl: &WebGl2RenderingContext,
         model: Pin<Box<mdx::Model<'s>>>,
 
-        mpq: Option<&mut webrpg_mpq::Archive>,
+        mpq: Option<&mut dyn webrpg_mpq::Archive>,
         texture_set: &mut TextureSet,
     ) -> Result<Self, Error> {
         let model_ref: &'s mdx::Model<'s> = unsafe { &*(model.as_ref().get_ref() as *const _) };

@@ -4,7 +4,7 @@ use crate::{
     uniform_declare, varying_declare,
 };
 
-pub static PARTICLE_SHADER: Descriptor<8, 8, 3> = Descriptor::new(
+pub static PARTICLE_SHADER: Descriptor<9, 8, 3> = Descriptor::new(
     "particle",
     [
         uniform_declare!(
@@ -54,6 +54,12 @@ pub static PARTICLE_SHADER: Descriptor<8, 8, 3> = Descriptor::new(
             ParticleState,
             alpha_cutoff,
             UniformType::Float,
+            PrecisionType::Low
+        ),
+        uniform_declare!(
+            ParticleState,
+            modulate,
+            UniformType::Int,
             PrecisionType::Low
         ),
     ],

@@ -25,6 +25,8 @@ await init();
 const root = await navigator.storage.getDirectory();
 let activeArchive = null;
 let activeData = null;
+let archiveNames = [];
+const archiveData = new Map();
 let filePaths = [];
 let currentPath = [];
 let mdxRenderer = null;
@@ -36,8 +38,11 @@ function setStatus(message) {
 }
 
 async function readOpfsFile(name) {
+  if (archiveData.has(name)) return archiveData.get(name);
   const handle = await root.getFileHandle(name);
-  return new Uint8Array(await (await handle.getFile()).arrayBuffer());
+  const data = new Uint8Array(await (await handle.getFile()).arrayBuffer());
+  archiveData.set(name, data);
+  return data;
 }
 
 async function refreshArchives() {
@@ -47,6 +52,7 @@ async function refreshArchives() {
     if (handle.kind === "file" && /\.(mpq|w3m|w3x)$/i.test(name)) names.push(name);
   }
   names.sort((a, b) => a.localeCompare(b));
+  archiveNames = names;
   for (const name of names) {
     const row = document.createElement("li");
     const open = document.createElement("button");
@@ -57,6 +63,7 @@ async function refreshArchives() {
     remove.textContent = "删除";
     remove.onclick = async () => {
       await root.removeEntry(name);
+      archiveData.delete(name);
       if (activeArchive === name) closeArchive();
       await refreshArchives();
     };
@@ -146,10 +153,13 @@ function addEntry(label, onclick) {
   entries.append(row);
 }
 
-function renderMdx(path) {
+async function renderMdx(path) {
   try {
+    setStatus(`正在从 ${archiveNames.length} 个归档中加载 ${path}…`);
+    const names = [activeArchive, ...archiveNames.filter((name) => name !== activeArchive)];
+    const data = await Promise.all(names.map(readOpfsFile));
     mdxRenderer?.free();
-    mdxRenderer = new MdxRenderer(canvas, activeArchive, activeData, path);
+    mdxRenderer = new MdxRenderer(canvas, names, data, path);
     activeMdxPath = path;
     const animations = mdxRenderer.animation_names().split("\n").filter(Boolean);
     animationSelect.replaceChildren(...animations.map((name, index) => {
@@ -192,6 +202,7 @@ teamSelect.onchange = () => {
 
 upload.onchange = async () => {
   for (const file of upload.files) {
+    archiveData.delete(file.name);
     const handle = await root.getFileHandle(file.name, { create: true });
     const writable = await handle.createWritable();
     await writable.write(file);

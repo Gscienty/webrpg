@@ -202,7 +202,7 @@ pub struct Model {
 impl Model {
     pub fn parse(
         context: &mut context::Context,
-        mpq: Option<&mut webrpg_mpq::Archive>,
+        mpq: Option<&mut dyn webrpg_mpq::Archive>,
         reader: &mut impl Read,
     ) -> Result<Self, io::Error> {
         let tag: u32 = read_value(reader)?;
